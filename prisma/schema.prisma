@@ -121,6 +121,13 @@ model User {
   coursesAsTeacher     Course[]
   courseEnrollments    CourseEnrollment[]
   notes                Note[]
+  // 题库刷题域
+  answers              QuestionAnswer[]
+  wrongRecords         WrongRecord[]
+  favorites            Favorite[]
+  paperAttempts        PaperAttempt[]
+  practicePapers       PracticePaper[] @relation("PracticePaperCreator")
+
   examResults          ExamResult[]
   refreshTokens        RefreshToken[]
   uploadedMaterials    Material[]
@@ -277,6 +284,7 @@ model Chapter {
 
   knowledgePoints KnowledgePoint[]
   lessons         Lesson[]
+  questions       Question[]
 
   @@index([textbookId, parentId])
   @@index([sortOrder])
@@ -395,17 +403,150 @@ model Question {
   subject       Subject       @relation(fields: [subjectId], references: [id])
   grade         Int?
   chapterId     String?
+  chapter       Chapter?      @relation(fields: [chapterId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   questionType  QuestionType
   source        String?       // 中考/高考/模拟/竞赛/AI生成
   sourceYear    Int?
   aiGenerated   Boolean       @default(false)
   reviewStatus  ReviewStatus  @default(PENDING)
+  // 答题统计（缓存，异步更新，避免重复统计）
+  attemptCount  Int           @default(0)
+  correctCount  Int           @default(0)
   createdAt     DateTime      @default(now())
+
+  answers         QuestionAnswer[]
+  wrongRecords    WrongRecord[]
+  favorites       Favorite[]
+  paperQuestions  PaperQuestion[]
 
   @@index([subjectId, grade])
   @@index([difficulty])
   @@index([reviewStatus])
   @@index([source, sourceYear])
+  @@index([chapterId])
+  @@index([correctCount, attemptCount])
+}
+
+// ==================== 题库刷题域 ====================
+
+/// 练习试卷：教师/AI 智能组卷，供学生练习（区别于 Exam 的正式考试）
+model PracticePaper {
+  id            String     @id @default(cuid())
+  title         String
+  creatorId     String?    // 教师或管理员创建；AI 组卷可空
+  creator       User?      @relation("PracticePaperCreator", fields: [creatorId], references: [id], onDelete: SetNull)
+  subjectId     Int
+  subject       Subject    @relation(fields: [subjectId], references: [id])
+  grade         Int?
+  // 生成方式：MANUAL 手动选 | AI_SMART AI智能组卷 | RANDOM 随机
+  mode          String     @default("MANUAL")
+  // 组卷参数 JSON：{ 题数、难度分布、知识点权重 }
+  params        Json?
+  totalScore    Int        @default(100)
+  durationMin   Int?       // 建议时长（分钟）
+  published     Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+
+  questions     PaperQuestion[]
+  attempts      PaperAttempt[]
+
+  @@index([subjectId, grade])
+  @@index([published, createdAt])
+}
+
+/// 试卷-题目关联（多对多，带序号）
+model PaperQuestion {
+  id          String        @id @default(cuid())
+  paperId     String
+  paper       PracticePaper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  questionId  String
+  question    Question      @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  sortOrder   Int           @default(0)
+  // 该题在卷中分值
+  score       Int           @default(5)
+
+  @@unique([paperId, questionId])
+  @@index([paperId, sortOrder])
+}
+
+/// 学生答题记录：单题作答（独立于试卷，也可用于逐题练习模式）
+model QuestionAnswer {
+  id            String     @id @default(cuid())
+  questionId    String
+  question      Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  // 学生作答内容；选择题为选项字母（JSON 数组多选）
+  answer        String?
+  // 主观题由 AI 评分（第二期），客观题立即判分
+  score         Float?
+  isCorrect     Boolean?
+  // 答题耗时（秒）
+  usedSec       Int?
+  // 所属答题尝试（optional），用于按试卷分组统计
+  attemptId     String?
+  attempt       PaperAttempt? @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+  createdAt     DateTime   @default(now())
+
+  @@index([studentId, questionId])
+  @@index([isCorrect])
+  @@index([attemptId])
+}
+
+/// 错题本：答错后自动加入，可手动移除
+model WrongRecord {
+  id          String   @id @default(cuid())
+  studentId   String
+  student     User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  questionId  String
+  question    Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  // 最新一次错答内容
+  lastWrongAnswer String?
+  // 连续错误次数（提示复习强度）
+  wrongCount  Int      @default(1)
+  // 是否已重做并答对（软标记，可用于筛选）
+  mastered    Boolean  @default(false)
+  firstWrongAt DateTime @default(now())
+  lastWrongAt  DateTime @default(now())
+  masteredAt   DateTime?
+
+  @@unique([studentId, questionId])
+  @@index([studentId, mastered])
+}
+
+/// 题目收藏
+model Favorite {
+  id        String   @id @default(cuid())
+  studentId String
+  student   User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  questionId String
+  question  Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, questionId])
+}
+
+/// 试卷答题尝试：学生在某张练习卷的一次作答
+model PaperAttempt {
+  id          String      @id @default(cuid())
+  paperId     String
+  paper       PracticePaper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     User        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  score       Float?
+  totalScore  Int         @default(100)
+  correctCount Int        @default(0)
+  totalCount  Int         @default(0)
+  startedAt   DateTime    @default(now())
+  submittedAt DateTime?
+  // 作答状态：IN_PROGRESS | SUBMITTED
+  status      String      @default("IN_PROGRESS")
+
+  answers     QuestionAnswer[]
+
+  @@index([studentId, paperId])
+  @@index([status])
+  @@unique([paperId, studentId, status, submittedAt])
 }
 
 // ==================== 考试域（骨架，第一期完善）====================

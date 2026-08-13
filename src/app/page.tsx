@@ -35,6 +35,18 @@ export default function HomePage() {
             >
               课程中心
             </Link>
+            <Link
+              href="/questions"
+              className="border border-white/40 text-white font-semibold px-6 py-3 rounded-lg hover:bg-white/10 transition"
+            >
+              题库刷题
+            </Link>
+            <Link
+              href="/wrong"
+              className="border border-white/40 text-white font-semibold px-6 py-3 rounded-lg hover:bg-white/10 transition"
+            >
+              错题本
+            </Link>
           </div>
         </div>
       </section>
