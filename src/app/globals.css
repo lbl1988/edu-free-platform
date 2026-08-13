@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand: #059669;
+  --brand-dark: #064e3b;
+  --brand-light: #0891b2;
+}
+
+html, body {
+  padding: 0;
+  margin: 0;
+  font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'PingFang SC', -apple-system, sans-serif;
+  background: #f6f8fb;
+  color: #1a2744;
+}
+
+* { box-sizing: border-box; }
+
+.brand-gradient {
+  background: linear-gradient(135deg, #064e3b 0%, #059669 50%, #0891b2 100%);
+}

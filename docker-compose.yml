@@ -1,0 +1,66 @@
+# 全国K-12免费教育学习平台 · 本地开发基础设施
+# 使用：docker compose up -d
+# 停止：docker compose down
+# 清空数据：docker compose down -v
+services:
+  postgres:
+    # pgvector 扩展用于 LightRAG 向量检索（第二期启用）
+    image: pgvector/pgvector:pg16
+    container_name: edu-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: edu
+      POSTGRES_PASSWORD: edu
+      POSTGRES_DB: edu_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - edu_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U edu -d edu_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: edu-redis
+    restart: unless-stopped
+    # 开发环境暂不设密码；生产环境务必配置 requirepass 与网络隔离
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - edu_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: edu-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio_minio_minio
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # 控制台
+    volumes:
+      - edu_miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 首次启动后需在 MinIO 控制台 (http://localhost:9001) 手动创建 Bucket
+  # 名称与 .env 中 MINIO_BUCKET 一致，例如 edu-materials
+
+volumes:
+  edu_pgdata:
+  edu_redisdata:
+  edu_miniodata:

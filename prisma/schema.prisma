@@ -1,0 +1,389 @@
+// 全国K-12免费教育学习平台 · Prisma Schema
+// 对应交接报告 CH7 数据库设计概览
+//
+// 设计说明：
+// 1. 数据库为 PostgreSQL 16 + pgvector 扩展（第二期 LightRAG 启用向量列）
+// 2. 主键统一使用 cuid()，避免自增 ID 暴露数据规模
+// 3. 报告建议"不建物理外键约束，应用层维护关系完整性"——本 schema 为保证数据
+//    完整性仍使用 Prisma 标准外键（数据库级约束），如需切换为 relationMode=prisma
+//    可后续调整，不影响业务层代码
+// 4. 软删除统一通过 deletedAt 字段实现，不物理删除用户数据（符合未成年人保护与审计要求）
+
+generator client {
+  provider      = "prisma-client-js"
+  // 输出到 node_modules/.prisma/client（默认），无需额外配置
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== 枚举 ====================
+
+enum Role {
+  STUDENT
+  PARENT
+  TEACHER
+  ADMIN
+}
+
+enum BoardType {
+  CLASSROOM
+  EXTRACURRICULAR
+  COMPETITION
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ExamType {
+  FORMAL
+  MOCK
+}
+
+enum ExamStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  SUBMITTED
+  GRADED
+  VIOLATION_SUBMIT
+}
+
+enum QuestionType {
+  SINGLE_CHOICE
+  MULTI_CHOICE
+  FILL_BLANK
+  ESSAY
+  CODING
+}
+
+enum ReviewStatus {
+  PENDING
+  AI_PASSED
+  AI_REJECTED
+  REVIEWER_PASSED
+  REVIEWER_REJECTED
+  EXPERT_PASSED
+  EXPERT_REJECTED
+}
+
+enum TaskStatus {
+  QUEUED
+  PROCESSING
+  SUCCESS
+  FAILED
+}
+
+enum VolunteerStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVOKED
+}
+
+enum RealNameStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+// ==================== 用户域 ====================
+
+model User {
+  id                   String          @id @default(cuid())
+  phone                String          @unique
+  passwordHash         String
+  nickname             String?
+  avatarUrl            String?
+  role                 Role            @default(STUDENT)
+  grade                Int?            // 1-12 年级
+  agentUserId          String?         // EduAgent 绑定 ID（第二期）
+  qaCollectionEnabled  Boolean         @default(true) // 是否允许采集 QA 日志用于优化
+  realNameStatus       RealNameStatus  @default(UNVERIFIED)
+  realName             String?         // 实名认证姓名（脱敏存储）
+  idCardHash           String?         // 身份证号哈希（不存明文）
+  // 防沉迷：未成年人每日累计学习时长上限（分钟），成人 null
+  dailyLimitMinutes    Int?            @default(120)
+  lastLoginAt          DateTime?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  deletedAt            DateTime?
+
+  parentBindings       ParentBinding[]
+  learningProfile      LearningProfile?
+  volunteerCerts       VolunteerCert[]
+  // 内容域关系
+  coursesAsTeacher     Course[]
+  courseEnrollments    CourseEnrollment[]
+  examResults          ExamResult[]
+  refreshTokens        RefreshToken[]
+
+  @@index([role])
+  @@index([grade])
+  @@index([deletedAt])
+}
+
+/// 家长绑定：一个学生可绑定多位家长，一位家长可关联多个子女
+model ParentBinding {
+  id          String   @id @default(cuid())
+  parentId    String
+  parent      User     @relation("ParentToBinding", fields: [parentId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     User     @relation("StudentToBinding", fields: [studentId], references: [id], onDelete: Cascade)
+  // 绑定凭证码（学生生成一次性码，家长凭码绑定）
+  bindCodeHash String?
+  verified     Boolean @default(false)
+  verifiedAt   DateTime?
+  createdAt    DateTime @default(now())
+
+  @@unique([parentId, studentId])
+  @@index([studentId])
+}
+
+/// 学习画像：聚合学生学情数据，供推荐系统使用
+model LearningProfile {
+  id                String   @id @default(cuid())
+  studentId         String   @unique
+  student           User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  // 薄弱知识点 JSON：[{ subjectId, chapterId, mastery: 0-1 }]
+  weakPoints        Json     @default("[]")
+  // 学习偏好 JSON：偏好学科、难度、时段
+  preferences       Json     @default("{}")
+  totalStudyMinutes Int      @default(0)
+  totalQuestions    Int      @default(0)
+  correctRate       Float    @default(0)
+  streakDays        Int      @default(0)
+  lastActiveAt      DateTime?
+  updatedAt         DateTime @updatedAt
+
+  @@index([lastActiveAt])
+}
+
+/// 志愿者认证：专家/教师志愿者贡献课程的认证记录
+model VolunteerCert {
+  id          String          @id @default(cuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status      VolunteerStatus @default(PENDING)
+  // 认证类型：学科专家 / 一线教师 / 高校志愿者
+  certType    String
+  expertise   String[]        // 擅长学科领域
+  orgName     String?         // 所属机构
+  intro       String?
+  // 贡献积分：可兑换线下学术活动参与资格
+  points      Int             @default(0)
+  reviewedBy  String?         // 审核管理员 ID
+  reviewedAt  DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([status])
+  @@index([userId])
+}
+
+/// Refresh Token：单次消费，事务化校验防重放
+model RefreshToken {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // token 哈希存储，不存明文
+  tokenHash   String   @unique
+  // 设备/客户端指纹，便于多端管理
+  userAgent   String?
+  ipAddr      String?
+  expiresAt   DateTime
+  revokedAt   DateTime? // 主动登出或刷新后置空
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ==================== 内容域（骨架，第二期完善）====================
+
+model Subject {
+  id        Int      @id
+  name      String
+  stage     String   // PRIMARY | JUNIOR | SENIOR
+  createdAt DateTime @default(now())
+
+  courses   Course[]
+  questions Question[]
+}
+
+model Course {
+  id          String       @id @default(cuid())
+  title       String
+  teacherId   String
+  teacher     User         @relation(fields: [teacherId], references: [id])
+  grade       Int
+  subjectId   Int
+  subject     Subject      @relation(fields: [subjectId], references: [id])
+  boardType   BoardType
+  status      CourseStatus @default(DRAFT)
+  intro       String?
+  coverUrl    String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  enrollments CourseEnrollment[]
+
+  @@index([grade, subjectId])
+  @@index([boardType, status])
+  @@index([teacherId])
+}
+
+model CourseEnrollment {
+  id        String   @id @default(cuid())
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  studentId String
+  student   User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  joinedAt  DateTime @default(now())
+
+  @@unique([courseId, studentId])
+  @@index([studentId])
+}
+
+model Question {
+  id            String        @id @default(cuid())
+  content       String
+  options       Json?         // 选择题选项
+  answer        String?
+  analysis      String?
+  videoUrl      String?
+  difficulty    Int           // 1-5
+  subjectId     Int
+  subject       Subject       @relation(fields: [subjectId], references: [id])
+  grade         Int?
+  chapterId     String?
+  questionType  QuestionType
+  source        String?       // 中考/高考/模拟/竞赛/AI生成
+  sourceYear    Int?
+  aiGenerated   Boolean       @default(false)
+  reviewStatus  ReviewStatus  @default(PENDING)
+  createdAt     DateTime      @default(now())
+
+  @@index([subjectId, grade])
+  @@index([difficulty])
+  @@index([reviewStatus])
+  @@index([source, sourceYear])
+}
+
+// ==================== 考试域（骨架，第一期完善）====================
+
+model Exam {
+  id          String   @id @default(cuid())
+  title       String
+  examType    ExamType
+  subjectId   Int
+  grade       Int
+  startTime   DateTime
+  endTime     DateTime
+  duration    Int      // 分钟
+  maxCheating Int      @default(3) // 最大切屏次数
+  creatorId   String
+  createdAt   DateTime @default(now())
+
+  results     ExamResult[]
+
+  @@index([subjectId, grade])
+  @@index([examType, startTime])
+}
+
+model ExamResult {
+  id              String     @id @default(cuid())
+  examId          String
+  exam            Exam       @relation(fields: [examId], references: [id])
+  studentId       String
+  student         User       @relation(fields: [studentId], references: [id])
+  score           Float?
+  objectiveScore  Float?
+  subjectiveScore Float?
+  status          ExamStatus @default(NOT_STARTED)
+  startTime       DateTime?
+  submitTime      DateTime?
+  createdAt       DateTime   @default(now())
+
+  violations      ExamViolation[]
+  answers         ExamAnswer[]
+
+  @@unique([examId, studentId])
+  @@index([studentId])
+}
+
+model ExamAnswer {
+  id           String   @id @default(cuid())
+  resultId     String
+  result       ExamResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  questionId   String
+  answer       String?
+  aiScore      Float?
+  finalScore   Float?
+  answeredAt   DateTime @default(now())
+
+  @@index([resultId])
+  @@index([questionId])
+}
+
+model ExamViolation {
+  id        String   @id @default(cuid())
+  resultId  String
+  result    ExamResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  type      String   // fullscreen_exit | tab_switch | copy_attempt | ip_change | fast_answer
+  detail    String?
+  occurredAt DateTime @default(now())
+
+  @@index([resultId])
+}
+
+// ==================== AI 内容域（骨架，第二期完善）====================
+
+model AIGenTask {
+  id          String     @id @default(cuid())
+  genType     String     // question | summary | subtitle
+  params      Json
+  status      TaskStatus @default(QUEUED)
+  result      Json?
+  errorMessage String?
+  createdAt   DateTime   @default(now())
+  processedAt DateTime?
+
+  @@index([status])
+  @@index([genType, status])
+}
+
+model CrawlTask {
+  id            String     @id @default(cuid())
+  source        String     // 采集源 URL
+  resourceType  String     // exam_paper | contest | open_course | textbook
+  region        String?    // 省份
+  year          Int?
+  status        TaskStatus @default(QUEUED)
+  result        Json?
+  errorMessage  String?
+  createdAt     DateTime   @default(now())
+  processedAt   DateTime?
+
+  @@index([status])
+}
+
+model ContentReview {
+  id           String        @id @default(cuid())
+  targetType   String        // question | summary | material
+  targetId     String
+  reviewStage  String        // ai | reviewer | expert
+  status       ReviewStatus
+  reviewerId   String?
+  comment      String?
+  createdAt    DateTime      @default(now())
+  reviewedAt   DateTime?
+
+  @@index([targetType, targetId])
+  @@index([status])
+}
