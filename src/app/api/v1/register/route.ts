@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { hashPassword } from '@/lib/auth';
+import { hashPassword } from '@/lib/auth.server';
 import { ok, badRequest, conflict, tooMany } from '@/lib/api-response';
 import { isPhone, isStrongPassword, isValidGrade, getClientIp } from '@/lib/utils';
 import { rateLimit } from '@/lib/redis';

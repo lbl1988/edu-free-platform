@@ -6,17 +6,18 @@ import { ok, notFound } from '@/lib/api-response';
 type Ctx = { params: { questionId: string } };
 
 // POST /api/v1/wrong/{questionId}/mastered — 标记错题已掌握
-export async function POST(request: NextRequest, { params }: Ctx) {
-  return await updateMastered(request, params, true);
+export async function POST(request: NextRequest, ctx: Ctx) {
+  return await updateMastered(request, ctx.params, true);
 }
 
 // PUT /api/v1/wrong/{questionId} — 标记未掌握
-export async function PUT(request: NextRequest, { params }: Ctx) {
-  return await updateMastered(request, params, false);
+export async function PUT(request: NextRequest, ctx: Ctx) {
+  return await updateMastered(request, ctx.params, false);
 }
 
 // DELETE /api/v1/wrong/{questionId} — 从错题本移除
-export async function DELETE(_request: NextRequest, { params }: Ctx) {
+export async function DELETE(_request: NextRequest, ctx: Ctx) {
+  const params = ctx.params;
   const [user, err] = await requireLogin(_request);
   if (err) return err;
   await prisma.wrongRecord.deleteMany({
@@ -25,7 +26,7 @@ export async function DELETE(_request: NextRequest, { params }: Ctx) {
   return ok({ message: '已从错题本移除' });
 }
 
-async function updateMastered(request: NextRequest, { params }: Ctx, mastered: boolean) {
+async function updateMastered(request: NextRequest, params: { questionId: string }, mastered: boolean) {
   const [user, err] = await requireLogin(request);
   if (err) return err;
   const updated = await prisma.wrongRecord.updateMany({

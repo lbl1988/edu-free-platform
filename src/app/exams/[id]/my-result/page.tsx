@@ -115,7 +115,7 @@ export default function ExamMyResultPage() {
             <Space size="middle" wrap>
               <Tag color={data.graded ? 'green' : 'blue'}>{data.graded ? '已批改' : '待批改'}</Tag>
               <span>正确 {data.correctCount ?? 0}/{data.totalCount}（正确率 {correctRate}%）</span>
-              <span>用时 {data.startTime && data.submitTime ? Math.round((dayjs(data.submitTime).diff(dayjs(data.startTime), 'minute') * 10) / 10 : 0)} 分钟</span>
+              <span>用时 {calcDuration(data.startTime, data.submitTime)} 分钟</span>
               <span className={data.cheatingCount > 0 ? 'text-red-600' : ''}>违规 {data.cheatingCount}/{data.exam.maxCheating}</span>
             </Space>
             <Progress percent={percent} status={percent >= 60 ? (data.status === 'VIOLATION_SUBMIT' ? 'exception' : 'success') : 'exception'} showInfo className="mt-3" />
@@ -208,4 +208,10 @@ export default function ExamMyResultPage() {
       </div>
     </main>
   );
+}
+
+function calcDuration(start: string, end: string | null) {
+  if (!start || !end) return 0;
+  const diff = dayjs(end).diff(dayjs(start), 'minute', true);
+  return Math.round(diff * 10) / 10;
 }

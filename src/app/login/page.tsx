@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, Form, Input, App } from 'antd';
 import Link from 'next/link';
 
-export default function LoginPage() {
+function LoginInner() {
   const router = useRouter();
   const params = useSearchParams();
   const { message } = App.useApp();
@@ -18,43 +18,59 @@ export default function LoginPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(values),
+        credentials: 'include',
       });
-      const data = await res.json();
-      if (!data.success) {
-        message.error(data.error?.message ?? '登录失败');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        message.error(data.message || '登录失败');
         return;
       }
       message.success('登录成功');
-      const redirect = params.get('redirect') ?? '/dashboard';
+      const redirect = params.get('redirect') || '/dashboard';
       router.push(redirect);
       router.refresh();
-    } catch {
-      message.error('网络错误，请重试');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-        <h1 className="text-2xl font-bold text-center mb-2">登录</h1>
-        <p className="text-center text-sm text-gray-500 mb-8">全国K-12免费教育学习平台</p>
-        <Form layout="vertical" onFinish={onFinish} autoComplete="off">
-          <Form.Item label="手机号" name="phone" rules={[{ required: true, message: '请输入手机号' }]}>
-            <Input placeholder="11 位手机号" maxLength={11} />
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8">
+        <h1 className="text-2xl font-bold text-center mb-6">登录教育平台</h1>
+        <Form layout="vertical" onFinish={onFinish} initialValues={{ phone: '', password: '' }}>
+          <Form.Item
+            label="手机号"
+            name="phone"
+            rules={[{ required: true, message: '请输入手机号' }, { pattern: /^1[3-9]\d{9}$/, message: '手机号格式不正确' }]}
+          >
+            <Input placeholder="请输入手机号" size="large" />
           </Form.Item>
-          <Form.Item label="密码" name="password" rules={[{ required: true, message: '请输入密码' }]}>
-            <Input.Password placeholder="密码" />
+          <Form.Item
+            label="密码"
+            name="password"
+            rules={[{ required: true, message: '请输入密码' }]}
+          >
+            <Input.Password placeholder="请输入密码" size="large" />
           </Form.Item>
-          <Button type="primary" htmlType="submit" block loading={loading} size="large">
-            登录
-          </Button>
+          <Form.Item>
+            <Button type="primary" htmlType="submit" loading={loading} block size="large">
+              登录
+            </Button>
+          </Form.Item>
+          <div className="text-center text-sm text-gray-500">
+            还没有账号？ <Link className="text-blue-600" href="/register">立即注册</Link>
+          </div>
         </Form>
-        <div className="text-center text-sm text-gray-500 mt-6">
-          还没有账号？<Link href="/register" className="text-emerald-600">免费注册</Link>
-        </div>
       </div>
-    </main>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-gray-500">加载中...</div>}>
+      <LoginInner />
+    </Suspense>
   );
 }

@@ -64,7 +64,7 @@ export async function POST(request: NextRequest, { params }: Ctx) {
   const exam = await prisma.exam.findUnique({
     where: { id: params.id },
     select: {
-      id: true, aiAutoGrade: true, totalScore: true,
+      id: true, aiAutoGrade: true, totalScore: true, maxCheating: true,
       questions: {
         orderBy: { sortOrder: 'asc' },
         select: { id: true, questionType: true, options: true, answer: true, perScore: true },

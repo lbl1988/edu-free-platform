@@ -39,7 +39,7 @@ export async function POST(request: NextRequest, { params }: Ctx) {
 
   const txResult = await prisma.$transaction(async (tx) => {
     const v = await tx.examViolation.create({
-      data: { resultId: result.id, type: body.type, detail: body.detail },
+      data: { resultId: result.id, type: body.type as string, detail: body.detail },
     });
     let status = result.status;
     const now = new Date();

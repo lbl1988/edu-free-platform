@@ -66,7 +66,8 @@ export async function POST(request: NextRequest, { params }: Ctx) {
   }
 
   // 已交卷/违规/已评分 的，不再下发答案与解析
-  const lockDown = [ExamStatus.SUBMITTED, ExamStatus.VIOLATION_SUBMIT, ExamStatus.GRADED].includes(result.status);
+  const s: string = result.status;
+  const lockDown = [ExamStatus.SUBMITTED, ExamStatus.VIOLATION_SUBMIT, ExamStatus.GRADED].includes(s as any);
   return ok({
     resultId: result.id,
     status: result.status,

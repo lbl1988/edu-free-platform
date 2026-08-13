@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Card, Spin, App, Button, Radio, Checkbox, Input, Form, Result, Space, Modal } from 'antd';
 import Link from 'next/link';
@@ -37,6 +37,14 @@ interface PaperDetail {
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
 export default function PracticePage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-gray-500">加载中...</div>}>
+      <PracticeInner />
+    </Suspense>
+  );
+}
+
+function PracticeInner() {
   const params = useSearchParams();
   const router = useRouter();
   const { message, modal } = App.useApp();

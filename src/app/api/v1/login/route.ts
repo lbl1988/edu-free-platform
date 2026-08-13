@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/prisma';
-import { verifyPassword, signAccessToken, issueRefreshToken, setAuthCookies } from '@/lib/auth';
+import { verifyPassword, signAccessToken, issueRefreshToken, setAuthCookies } from '@/lib/auth.server';
 import { ok, badRequest, tooMany, unauthorized } from '@/lib/api-response';
 import { isPhone, getClientIp, getUserAgent } from '@/lib/utils';
 import { rateLimit } from '@/lib/redis';

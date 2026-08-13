@@ -199,7 +199,6 @@ export default function ExamTakePage() {
       const data = await res.json();
       if (data.success) {
         setSubmitResult(data.data);
-        enterFullscreen.release?.();
         antMessage.success(force ? '已超时自动交卷' : '交卷成功');
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {

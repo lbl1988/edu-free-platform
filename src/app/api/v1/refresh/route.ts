@@ -8,7 +8,7 @@ import {
   setAuthCookies,
   clearAuthCookies,
   getRefreshCookie,
-} from '@/lib/auth';
+} from '@/lib/auth.server';
 import { ok, unauthorized } from '@/lib/api-response';
 import { getUserAgent, getClientIp } from '@/lib/utils';
 

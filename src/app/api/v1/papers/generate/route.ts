@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { Role, QuestionType, ReviewStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireLogin } from '@/lib/guards';
-import { ok, badRequest } from '@/lib/api-response';
-import { QuestionType, ReviewStatus, Role } from '@prisma/client';
+import { ok, badRequest, notFound } from '@/lib/api-response';
 
 // ===================== 组卷逻辑 =====================
 // 支持三种 mode：RANDOM 随机 / SMART 智能（按难度加权抽样）/ MANUAL 手动选题
@@ -21,6 +21,7 @@ const GenSchema = z.object({
       MULTI_CHOICE: z.number().int().min(0).default(0),
       FILL_BLANK: z.number().int().min(0).default(0),
       ESSAY: z.number().int().min(0).default(0),
+      CODING: z.number().int().min(0).default(0),
     })
     .default({ SINGLE_CHOICE: 10 }),
   // SMART 模式下难度分布（合计应为 100%）
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest) {
     if (p.questionCount.MULTI_CHOICE > 0) types.push('MULTI_CHOICE');
     if (p.questionCount.FILL_BLANK > 0) types.push('FILL_BLANK');
     if (p.questionCount.ESSAY > 0) types.push('ESSAY');
+    if (p.questionCount.CODING > 0) types.push('CODING');
 
     for (const t of types) {
       const count = p.questionCount[t];
@@ -96,18 +98,21 @@ export async function POST(request: NextRequest) {
       const wh = { ...baseWhere, questionType: t };
 
       if (p.mode === 'RANDOM') {
-        // 随机抽 count 道
-        const qs = await prisma.$queryRaw<{ id: string }[]>`
-          SELECT id FROM "Question"
-          WHERE "subjectId" = ${p.subjectId}::int
-          ${p.grade ? `AND "grade" = ${p.grade}` : prisma.empty}
-          ${p.chapterId ? `AND "chapterId" = ${p.chapterId}` : prisma.empty}
-          AND "questionType" = ${t}::"QuestionType"
-          AND "reviewStatus" IN (${ReviewStatus.AI_PASSED},${ReviewStatus.EXPERT_PASSED},${ReviewStatus.REVIEWER_PASSED})::"ReviewStatus"[]
-          ORDER BY random()
-          LIMIT ${count}
-        `;
-        selectedIds.push(...qs.map((x) => x.id));
+        // 随机抽 count 道（不使用 $queryRaw 条件拼接，改为普通 findMany + 随机种子式排序）
+        const qs = await prisma.question.findMany({
+          where: {
+            ...baseWhere,
+            questionType: t,
+            ...(p.grade !== undefined ? { grade: p.grade } : {}),
+            ...(p.chapterId ? { chapterId: p.chapterId } : {}),
+          },
+          select: { id: true },
+          orderBy: { createdAt: 'desc' },
+          take: count * 2,
+        });
+        // 本地洗牌取前 count
+        const shuffled = [...qs].sort(() => Math.random() - 0.5).slice(0, count);
+        selectedIds.push(...shuffled.map((x) => x.id));
       } else {
         // SMART：按难度分层抽样
         const buckets = [
@@ -121,18 +126,19 @@ export async function POST(request: NextRequest) {
               ? count - Math.round(count * (p.difficultyDist.easy + p.difficultyDist.medium) / 100)
               : Math.round(count * bucket.ratio);
           if (bucketCount <= 0) continue;
-          const qs = await prisma.$queryRaw<{ id: string }[]>`
-            SELECT id FROM "Question"
-            WHERE "subjectId" = ${p.subjectId}::int
-            ${p.grade ? `AND "grade" = ${p.grade}` : prisma.empty}
-            ${p.chapterId ? `AND "chapterId" = ${p.chapterId}` : prisma.empty}
-            AND "questionType" = ${t}::"QuestionType"
-            AND "reviewStatus" IN (${ReviewStatus.AI_PASSED},${ReviewStatus.EXPERT_PASSED},${ReviewStatus.REVIEWER_PASSED})::"ReviewStatus"[]
-            AND "difficulty" BETWEEN ${bucket.difficultyRange[0]} AND ${bucket.difficultyRange[1]}
-            ORDER BY random()
-            LIMIT ${bucketCount}
-          `;
-          selectedIds.push(...qs.map((x) => x.id));
+          const qs = await prisma.question.findMany({
+            where: {
+              ...baseWhere,
+              questionType: t,
+              difficulty: { gte: bucket.difficultyRange[0], lte: bucket.difficultyRange[1] },
+              ...(p.grade !== undefined ? { grade: p.grade } : {}),
+              ...(p.chapterId ? { chapterId: p.chapterId } : {}),
+            },
+            select: { id: true },
+            take: bucketCount * 3,
+          });
+          const shuffled = [...qs].sort(() => Math.random() - 0.5).slice(0, bucketCount);
+          selectedIds.push(...shuffled.map((x) => x.id));
         }
       }
     }

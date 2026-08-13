@@ -114,7 +114,8 @@ model User {
   updatedAt            DateTime        @updatedAt
   deletedAt            DateTime?
 
-  parentBindings       ParentBinding[]
+  parentBindingsAsParent  ParentBinding[] @relation("ParentToBinding")
+  parentBindingsAsStudent ParentBinding[] @relation("StudentToBinding")
   learningProfile      LearningProfile?
   volunteerCerts       VolunteerCert[]
   // 内容域关系
@@ -222,8 +223,11 @@ model Subject {
   stage     String   // PRIMARY | JUNIOR | SENIOR
   createdAt DateTime @default(now())
 
-  courses   Course[]
-  questions Question[]
+  courses        Course[]
+  questions      Question[]
+  textbooks      Textbook[]
+  practicePapers PracticePaper[]
+  exams          Exam[]
 }
 
 model Course {
@@ -419,6 +423,7 @@ model Question {
   wrongRecords    WrongRecord[]
   favorites       Favorite[]
   paperQuestions  PaperQuestion[]
+  examQuestions   ExamQuestion[] @relation("SrcQuestion")
 
   @@index([subjectId, grade])
   @@index([difficulty])
@@ -450,6 +455,7 @@ model PracticePaper {
 
   questions     PaperQuestion[]
   attempts      PaperAttempt[]
+  derivedExams  Exam[]         @relation("PaperToExam")
 
   @@index([subjectId, grade])
   @@index([published, createdAt])
@@ -570,7 +576,7 @@ model Exam {
   questions      ExamQuestion[]
   // 可选：基于练习卷快速生成考试（题目从卷中复制）
   sourcePaperId  String?
-  sourcePaper    PracticePaper? @relation(fields: [sourcePaperId], references: [id], onDelete: SetNull)
+  sourcePaper    PracticePaper? @relation("PaperToExam", fields: [sourcePaperId], references: [id], onDelete: SetNull)
   totalScore     Int           @default(100)
   // 发布控制：草稿时学生不可见；归档后不可进入
   status         CourseStatus  @default(DRAFT)  // 复用 CourseStatus: DRAFT|PUBLISHED|ARCHIVED
@@ -596,7 +602,7 @@ model ExamQuestion {
   exam         Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
   // 原题库题 ID（可空：纯手动创建的考试题）
   srcQuestionId String?
-  srcQuestion  Question? @relation(fields: [srcQuestionId], references: [id], onDelete: SetNull)
+  srcQuestion  Question? @relation("SrcQuestion", fields: [srcQuestionId], references: [id], onDelete: SetNull)
   // 题目快照
   content      String
   options      Json?
