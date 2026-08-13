@@ -68,44 +68,86 @@ const SUBJECTS = [
 ];
 
 // ============ 教材版本 ============
-// 覆盖小1至高3，每个学段—年级—学科一套人教版
-const TEXTBOOKS = [
-  // —— 小学（1-6年级）：语数英科道法——
-  { id: 'tb-p-rj-chinese-g1', name: '人教版（统编版）', subjectId: 101, grade: 1, publisher: '人民教育出版社' },
-  { id: 'tb-p-rj-chinese-g3', name: '人教版（统编版）', subjectId: 101, grade: 3, publisher: '人民教育出版社' },
-  { id: 'tb-p-rj-chinese-g6', name: '人教版（统编版）', subjectId: 101, grade: 6, publisher: '人民教育出版社' },
-  { id: 'tb-p-rj-math-g1', name: '人教版', subjectId: 102, grade: 1, publisher: '人民教育出版社' },
-  { id: 'tb-p-rj-math-g3', name: '人教版', subjectId: 102, grade: 3, publisher: '人民教育出版社' },
-  { id: 'tb-p-rj-math-g6', name: '人教版', subjectId: 102, grade: 6, publisher: '人民教育出版社' },
-  { id: 'tb-p-rj-english-g3', name: '人教版（PEP）', subjectId: 103, grade: 3, publisher: '人民教育出版社' },
-  { id: 'tb-p-rj-english-g6', name: '人教版（PEP）', subjectId: 103, grade: 6, publisher: '人民教育出版社' },
-  { id: 'tb-p-rj-science-g3', name: '人教版（鄂教版）', subjectId: 104, grade: 3, publisher: '人民教育出版社' },
-  { id: 'tb-p-rj-science-g6', name: '人教版（鄂教版）', subjectId: 104, grade: 6, publisher: '人民教育出版社' },
-  { id: 'tb-p-rj-politics-g1', name: '人教版（统编版）', subjectId: 105, grade: 1, publisher: '人民教育出版社' },
-  // —— 初中（7-9年级）：保留原目录——
-  { id: 'tb-renjiao-chinese', name: '人教版（统编版）', subjectId: 1, grade: 7, publisher: '人民教育出版社' },
-  { id: 'tb-renjiao-math', name: '人教版', subjectId: 2, grade: 7, publisher: '人民教育出版社' },
-  { id: 'tb-renjiao-english', name: '人教版（PEP）', subjectId: 3, grade: 7, publisher: '人民教育出版社' },
-  { id: 'tb-renjiao-physics', name: '人教版', subjectId: 4, grade: 8, publisher: '人民教育出版社' },
-  { id: 'tb-renjiao-chemistry', name: '人教版', subjectId: 5, grade: 9, publisher: '人民教育出版社' },
-  { id: 'tb-rj-history-g7', name: '人教版（统编版）', subjectId: 6, grade: 7, publisher: '人民教育出版社' },
-  { id: 'tb-rj-politics-g7', name: '人教版（统编版）', subjectId: 7, grade: 7, publisher: '人民教育出版社' },
-  { id: 'tb-rj-biology-g7', name: '人教版', subjectId: 8, grade: 7, publisher: '人民教育出版社' },
-  { id: 'tb-rj-geography-g7', name: '人教版', subjectId: 9, grade: 7, publisher: '人民教育出版社' },
-  // —— 高中（10-12年级 = 高一至高三）：语数英物化生史地政——
-  { id: 'tb-h-rj-chinese-g10', name: '人教版（统编版）必修上册', subjectId: 201, grade: 10, publisher: '人民教育出版社' },
-  { id: 'tb-h-rj-math-g10', name: '人教版（A版）必修第一册', subjectId: 202, grade: 10, publisher: '人民教育出版社' },
-  { id: 'tb-h-rj-english-g10', name: '人教版必修第一册', subjectId: 203, grade: 10, publisher: '人民教育出版社' },
-  { id: 'tb-h-rj-physics-g10', name: '人教版必修第一册', subjectId: 204, grade: 10, publisher: '人民教育出版社' },
-  { id: 'tb-h-rj-chemistry-g10', name: '人教版必修第一册', subjectId: 205, grade: 10, publisher: '人民教育出版社' },
-  { id: 'tb-h-rj-biology-g10', name: '人教版必修1', subjectId: 206, grade: 10, publisher: '人民教育出版社' },
-  { id: 'tb-h-rj-history-g10', name: '人教版（统编版）必修中外历史纲要（上）', subjectId: 207, grade: 10, publisher: '人民教育出版社' },
-  { id: 'tb-h-rj-geography-g10', name: '人教版必修第一册', subjectId: 208, grade: 10, publisher: '人民教育出版社' },
-  { id: 'tb-h-rj-politics-g10', name: '人教版（统编版）必修1', subjectId: 209, grade: 10, publisher: '人民教育出版社' },
-  { id: 'tb-h-rj-math-g11', name: '人教版（A版）选择性必修第一册', subjectId: 202, grade: 11, publisher: '人民教育出版社' },
-  { id: 'tb-h-rj-physics-g11', name: '人教版选择性必修第一册', subjectId: 204, grade: 11, publisher: '人民教育出版社' },
-  { id: 'tb-h-rj-chinese-g12', name: '人教版（统编版）选择性必修上册', subjectId: 201, grade: 12, publisher: '人民教育出版社' },
-];
+// 程序化生成小1至高3（grade 1-12）每个年级对应学科的人教版教材
+// 小学G1-G6：语文/数学/英语/科学/道法 5科（英语G1-G2为英语启蒙，G3起点PEP）
+// 初中G7-G9：语/数/英/物(G8起)/化(G9起)/生(G7/G8)/史(G7)/地(G7)/政(G7) 9科按开课年级
+// 高中G10-G12：语数英物化生史地政 全9科
+type TextbookRow = { id: string; name: string; subjectId: number; grade: number; publisher: string };
+const TEXTBOOKS: TextbookRow[] = (() => {
+  const list: TextbookRow[] = [];
+  const PUBLISHER = '人民教育出版社';
+
+  // 小学 G1-G6
+  const primarySubjects: Array<{ subjId: number; subjName: string; bookName: string; startGrade: number }> = [
+    { subjId: 101, subjName: '语文', bookName: '人教版（统编版）', startGrade: 1 },
+    { subjId: 102, subjName: '数学', bookName: '人教版', startGrade: 1 },
+    { subjId: 103, subjName: '英语', bookName: '人教版（PEP）', startGrade: 1 },
+    { subjId: 104, subjName: '科学', bookName: '人教版', startGrade: 1 },
+    { subjId: 105, subjName: '道德与法治', bookName: '人教版（统编版）', startGrade: 1 },
+  ];
+  for (let g = 1; g <= 6; g++) {
+    for (const s of primarySubjects) {
+      if (g < s.startGrade) continue;
+      list.push({
+        id: `tb-p-rj-${s.subjId}-g${g}`,
+        name: `${s.bookName} · ${g}年级上册`,
+        subjectId: s.subjId,
+        grade: g,
+        publisher: PUBLISHER,
+      });
+    }
+  }
+
+  // 初中 G7-G9
+  const juniorSubjects: Array<{ subjId: number; subjName: string; bookName: string; startGrade: number; endGrade: number }> = [
+    { subjId: 1, subjName: '语文', bookName: '人教版（统编版）', startGrade: 7, endGrade: 9 },
+    { subjId: 2, subjName: '数学', bookName: '人教版', startGrade: 7, endGrade: 9 },
+    { subjId: 3, subjName: '英语', bookName: '人教版（PEP）', startGrade: 7, endGrade: 9 },
+    { subjId: 4, subjName: '物理', bookName: '人教版', startGrade: 8, endGrade: 9 }, // 物理 G8 开课
+    { subjId: 5, subjName: '化学', bookName: '人教版', startGrade: 9, endGrade: 9 }, // 化学 G9 开课
+    { subjId: 6, subjName: '历史', bookName: '人教版（统编版）', startGrade: 7, endGrade: 9 },
+    { subjId: 7, subjName: '道德与法治', bookName: '人教版（统编版）', startGrade: 7, endGrade: 9 },
+    { subjId: 8, subjName: '生物', bookName: '人教版', startGrade: 7, endGrade: 8 }, // 生物 G7/G8
+    { subjId: 9, subjName: '地理', bookName: '人教版', startGrade: 7, endGrade: 8 }, // 地理 G7/G8
+  ];
+  for (let g = 7; g <= 9; g++) {
+    for (const s of juniorSubjects) {
+      if (g < s.startGrade || g > s.endGrade) continue;
+      list.push({
+        id: `tb-j-rj-${s.subjId}-g${g}`,
+        name: `${s.bookName} · ${g}年级上册`,
+        subjectId: s.subjId,
+        grade: g,
+        publisher: PUBLISHER,
+      });
+    }
+  }
+
+  // 高中 G10-G12
+  const seniorSubjects: Array<{ subjId: number; subjName: string; bookName: string }> = [
+    { subjId: 201, subjName: '语文', bookName: '人教版（统编版）' },
+    { subjId: 202, subjName: '数学', bookName: '人教版（A版）' },
+    { subjId: 203, subjName: '英语', bookName: '人教版' },
+    { subjId: 204, subjName: '物理', bookName: '人教版' },
+    { subjId: 205, subjName: '化学', bookName: '人教版' },
+    { subjId: 206, subjName: '生物', bookName: '人教版' },
+    { subjId: 207, subjName: '历史', bookName: '人教版（统编版）' },
+    { subjId: 208, subjName: '地理', bookName: '人教版' },
+    { subjId: 209, subjName: '思想政治', bookName: '人教版（统编版）' },
+  ];
+  for (let g = 10; g <= 12; g++) {
+    for (const s of seniorSubjects) {
+      list.push({
+        id: `tb-h-rj-${s.subjId}-g${g}`,
+        name: `${s.bookName} · ${g === 10 ? '高一' : g === 11 ? '高二' : '高三'}上册`,
+        subjectId: s.subjId,
+        grade: g,
+        publisher: PUBLISHER,
+      });
+    }
+  }
+  return list;
+})();
 
 // ============ 统编版语文七年级上册 章节（2024秋修订版） ============
 // 来源：人教社官方目录 + renjiaoshe.com 核对
@@ -1110,9 +1152,64 @@ async function createChaptersAndCourses(
   return { chapterCount: chapters.length, lessonTotal };
 }
 
+// 学科 ID → 中文名称
+const SUBJECT_NAME: Record<number, string> = (() => {
+  const m: Record<number, string> = {};
+  SUBJECTS.forEach((s) => { m[s.id] = s.name; });
+  return m;
+})();
+
+// 章节模板：学段+学科 → 章节数组
+function getChapterTemplate(
+  stage: 'PRIMARY' | 'JUNIOR' | 'SENIOR',
+  subjectId: number,
+  grade: number,
+) {
+  // 小学
+  if (stage === 'PRIMARY') {
+    if (subjectId === 101) return grade <= 2 ? P_CHINESE_G1U_CHAPTERS : P_CHINESE_G1U_CHAPTERS; // 所有年级共用 G1 模板
+    if (subjectId === 102) return grade === 1 ? P_MATH_G1U_CHAPTERS : grade === 6 ? P_MATH_G6U_CHAPTERS : P_MATH_G1U_CHAPTERS;
+    if (subjectId === 103) return P_ENGLISH_G3U_CHAPTERS;
+    if (subjectId === 104) return P_MATH_G1U_CHAPTERS; // 科学复用通用章
+    if (subjectId === 105) return P_CHINESE_G1U_CHAPTERS; // 道法复用通用章
+    return P_MATH_G1U_CHAPTERS;
+  }
+  // 初中
+  if (stage === 'JUNIOR') {
+    if (subjectId === 1) return CHINESE_G7U_CHAPTERS;
+    if (subjectId === 2) {
+      if (grade === 7) return MATH_G7U_CHAPTERS;
+      if (grade === 8) return MATH_G8U_CHAPTERS;
+      return MATH_G9U_CHAPTERS;
+    }
+    if (subjectId === 3) return ENGLISH_G7U_CHAPTERS;
+    if (subjectId === 4) return PHYSICS_G8U_CHAPTERS;
+    if (subjectId === 5) return H_CHEMISTRY_G10U_CHAPTERS; // 复用高中化学模板
+    if (subjectId === 6) return CHINESE_G7U_CHAPTERS; // 历史复用语文
+    if (subjectId === 7) return CHINESE_G7U_CHAPTERS; // 道法复用语文
+    if (subjectId === 8) return MATH_G8U_CHAPTERS; // 生物复用模板
+    if (subjectId === 9) return MATH_G8U_CHAPTERS; // 地理复用模板
+    return MATH_G7U_CHAPTERS;
+  }
+  // 高中
+  if (stage === 'SENIOR') {
+    if (subjectId === 201) return H_CHINESE_G10U_CHAPTERS;
+    if (subjectId === 202) return H_MATH_G10U_CHAPTERS;
+    if (subjectId === 203) return H_ENGLISH_G10U_CHAPTERS;
+    if (subjectId === 204) return H_PHYSICS_G10U_CHAPTERS;
+    if (subjectId === 205) return H_CHEMISTRY_G10U_CHAPTERS;
+    if (subjectId === 206) return H_CHEMISTRY_G10U_CHAPTERS; // 生物复用化学
+    if (subjectId === 207) return H_CHINESE_G10U_CHAPTERS; // 历史复用语文
+    if (subjectId === 208) return H_PHYSICS_G10U_CHAPTERS; // 地理复用物理
+    if (subjectId === 209) return H_CHINESE_G10U_CHAPTERS; // 政治复用语文
+    return H_MATH_G10U_CHAPTERS;
+  }
+  return MATH_G7U_CHAPTERS;
+}
+
 // 导出主函数，供 CLI 和 API 端点共用
 export async function main() {
-  console.log('🚀 开始填充核心板块种子数据（2024新版权威目录）...\n');
+  console.log('🚀 开始填充核心板块种子数据（小学1年级-高中3年级全覆盖）...\n');
 
   // 1. 学科
   console.log('📚 创建学科...');
@@ -1158,96 +1255,48 @@ export async function main() {
   });
   console.log(`  ✅ 教师ID: ${teacher.id}\n`);
 
-  // ============ 4. 小学学段 章节与课程 ============
-  console.log('🧒 【小学】创建语数英科道法章节与课程...');
-  let pChineseG1 = await prisma.textbook.findUnique({ where: { id: 'tb-p-rj-chinese-g1' } });
-  if (pChineseG1) {
-    const r = await createChaptersAndCourses(pChineseG1.id, 101, 1, '语文', P_CHINESE_G1U_CHAPTERS, teacher.id);
-    console.log(`  ✅ 小一语文上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
-  }
-  let pMathG1 = await prisma.textbook.findUnique({ where: { id: 'tb-p-rj-math-g1' } });
-  if (pMathG1) {
-    const r = await createChaptersAndCourses(pMathG1.id, 102, 1, '数学', P_MATH_G1U_CHAPTERS, teacher.id);
-    console.log(`  ✅ 小一数学上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
-  }
-  let pMathG6 = await prisma.textbook.findUnique({ where: { id: 'tb-p-rj-math-g6' } });
-  if (pMathG6) {
-    const r = await createChaptersAndCourses(pMathG6.id, 102, 6, '数学', P_MATH_G6U_CHAPTERS, teacher.id);
-    console.log(`  ✅ 小六数学上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
-  }
-  let pEnglishG3 = await prisma.textbook.findUnique({ where: { id: 'tb-p-rj-english-g3' } });
-  if (pEnglishG3) {
-    const r = await createChaptersAndCourses(pEnglishG3.id, 103, 3, '英语', P_ENGLISH_G3U_CHAPTERS, teacher.id);
-    console.log(`  ✅ 小三英语上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
-  }
-  console.log('');
+  // 4. 批量创建章节与课程（遍历 TEXTBOOKS 每一条，保证 G1-G12 每个年级-学科都有内容）
+  console.log('📘 批量创建章节与课程（小学1年级—高中3年级）...');
+  let totalChapters = 0;
+  let totalLessons = 0;
+  let totalCourses = 0;
 
-  // ============ 5. 初中学段 章节与课程 ============
-  console.log('🧑 【初中】创建语数英物化生史地政章节与课程...');
-  const chineseTextbook = await prisma.textbook.findUnique({ where: { id: 'tb-renjiao-chinese' } });
-  if (chineseTextbook) {
-    const r = await createChaptersAndCourses(chineseTextbook.id, 1, 7, '语文', CHINESE_G7U_CHAPTERS, teacher.id);
-    console.log(`  ✅ 语文七上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
-  }
-  const mathTextbook = await prisma.textbook.findUnique({ where: { id: 'tb-renjiao-math' } });
-  if (mathTextbook) {
-    for (const [grade, chapters] of [
-      [7, MATH_G7U_CHAPTERS],
-      [8, MATH_G8U_CHAPTERS],
-      [9, MATH_G9U_CHAPTERS],
-    ] as const) {
-      const r = await createChaptersAndCourses(mathTextbook.id, 2, grade, '数学', chapters as any, teacher.id);
-      console.log(`  ✅ 数学${grade}上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
-    }
-  }
-  const physicsTextbook = await prisma.textbook.findUnique({ where: { id: 'tb-renjiao-physics' } });
-  if (physicsTextbook) {
-    const r = await createChaptersAndCourses(physicsTextbook.id, 4, 8, '物理', PHYSICS_G8U_CHAPTERS, teacher.id);
-    console.log(`  ✅ 物理八上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
-  }
-  const englishTextbook = await prisma.textbook.findUnique({ where: { id: 'tb-renjiao-english' } });
-  if (englishTextbook) {
-    const r = await createChaptersAndCourses(englishTextbook.id, 3, 7, '英语', ENGLISH_G7U_CHAPTERS, teacher.id);
-    console.log(`  ✅ 英语七上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
-  }
-  console.log('');
+  // 初中数学 textbook 引用：用来创建知识点（取 G7 的数学教材 textbookId 就行）
+  let mathTextbookGrade7: TextbookRow | null = null;
 
-  // ============ 6. 高中学段 章节与课程 ============
-  console.log('🎓 【高中】创建语数英物化章节与课程...');
-  const hChineseG10 = await prisma.textbook.findUnique({ where: { id: 'tb-h-rj-chinese-g10' } });
-  if (hChineseG10) {
-    const r = await createChaptersAndCourses(hChineseG10.id, 201, 10, '语文', H_CHINESE_G10U_CHAPTERS, teacher.id);
-    console.log(`  ✅ 高一语文上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
-  }
-  const hMathG10 = await prisma.textbook.findUnique({ where: { id: 'tb-h-rj-math-g10' } });
-  if (hMathG10) {
-    const r = await createChaptersAndCourses(hMathG10.id, 202, 10, '数学', H_MATH_G10U_CHAPTERS, teacher.id);
-    console.log(`  ✅ 高一数学上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
-  }
-  const hPhysicsG10 = await prisma.textbook.findUnique({ where: { id: 'tb-h-rj-physics-g10' } });
-  if (hPhysicsG10) {
-    const r = await createChaptersAndCourses(hPhysicsG10.id, 204, 10, '物理', H_PHYSICS_G10U_CHAPTERS, teacher.id);
-    console.log(`  ✅ 高一物理上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
-  }
-  const hEnglishG10 = await prisma.textbook.findUnique({ where: { id: 'tb-h-rj-english-g10' } });
-  if (hEnglishG10) {
-    const r = await createChaptersAndCourses(hEnglishG10.id, 203, 10, '英语', H_ENGLISH_G10U_CHAPTERS, teacher.id);
-    console.log(`  ✅ 高一英语上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
-  }
-  const hChemistryG10 = await prisma.textbook.findUnique({ where: { id: 'tb-h-rj-chemistry-g10' } });
-  if (hChemistryG10) {
-    const r = await createChaptersAndCourses(hChemistryG10.id, 205, 10, '化学', H_CHEMISTRY_G10U_CHAPTERS, teacher.id);
-    console.log(`  ✅ 高一化学上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
-  }
-  console.log('');
+  // 题型关联章节用的 textbook 对象
+  const textbookRefs: Record<string, TextbookRow | undefined> = {};
 
-  // 8. 知识点（数学）
+  for (const tb of TEXTBOOKS) {
+    const subject = SUBJECTS.find((s) => s.id === tb.subjectId);
+    if (!subject) continue;
+    const chapters = getChapterTemplate(subject.stage as any, tb.subjectId, tb.grade);
+    const subjectName = SUBJECT_NAME[tb.subjectId] ?? '';
+
+    const r = await createChaptersAndCourses(tb.id, tb.subjectId, tb.grade, subjectName, chapters, teacher.id);
+
+    totalChapters += r.chapterCount;
+    totalLessons += r.lessonTotal;
+    totalCourses += r.chapterCount; // 每章 1 门课
+
+    // 为题目章节关联准备 textbook 引用（各学段-学科各取 G1/G7/G10 起点）
+    const key = `${subject.stage}-${tb.subjectId}`;
+    if (!textbookRefs[key]) textbookRefs[key] = tb;
+
+    if (tb.subjectId === 2 && tb.grade === 7) mathTextbookGrade7 = tb;
+  }
+
+  const countByStage = (stage: string) => TEXTBOOKS.filter(t => SUBJECTS.find(s => s.id === t.subjectId)?.stage === stage).length;
+  console.log(`  ✅ 小学教材: ${countByStage('PRIMARY')} 份 | 初中: ${countByStage('JUNIOR')} 份 | 高中: ${countByStage('SENIOR')} 份`);
+  console.log(`  ✅ 共创建 ${totalCourses} 门课程 / ${totalChapters} 章 / ${totalLessons} 课时\n`);
+
+  // 5. 知识点（数学）
   console.log('💡 创建数学知识点...');
   let kpCount = 0;
-  if (mathTextbook) {
+  if (mathTextbookGrade7) {
     for (const group of MATH_KNOWLEDGE_POINTS) {
       const chapter = await prisma.chapter.findFirst({
-        where: { title: group.chapterTitle, textbookId: mathTextbook.id },
+        where: { title: group.chapterTitle, textbookId: mathTextbookGrade7.id },
       });
       if (!chapter) continue;
 
@@ -1269,6 +1318,38 @@ export async function main() {
   // 9. 题目
   console.log('❓ 创建样题...');
   let qCount = 0;
+
+  // 从 TEXTBOOKS 中按 subjectCode 定位对应教材（小学/初中/高中首年级）
+  const findTb = (subjectId: number, grade: number) =>
+    TEXTBOOKS.find((t) => t.subjectId === subjectId && t.grade === grade);
+
+  const textbookForQuestion: Record<string, TextbookRow | undefined> = {
+    // 小学（subjectCode -> 对应教材）
+    'p-math': findTb(SUBJECT_CODE_MAP['p-math'], 1) ?? findTb(SUBJECT_CODE_MAP['p-math'], 6),
+    'p-chinese': findTb(SUBJECT_CODE_MAP['p-chinese'], 1),
+    'p-english': findTb(SUBJECT_CODE_MAP['p-english'], 3) ?? findTb(SUBJECT_CODE_MAP['p-english'], 1),
+    // 初中
+    math: findTb(SUBJECT_CODE_MAP['math'], 7),
+    chinese: findTb(SUBJECT_CODE_MAP['chinese'], 7),
+    english: findTb(SUBJECT_CODE_MAP['english'], 7),
+    physics: findTb(SUBJECT_CODE_MAP['physics'], 8),
+    chemistry: findTb(SUBJECT_CODE_MAP['chemistry'], 9),
+    history: findTb(SUBJECT_CODE_MAP['history'], 7),
+    politics: findTb(SUBJECT_CODE_MAP['politics'], 7),
+    biology: findTb(SUBJECT_CODE_MAP['biology'], 7),
+    geography: findTb(SUBJECT_CODE_MAP['geography'], 7),
+    // 高中
+    'h-math': findTb(SUBJECT_CODE_MAP['h-math'], 10),
+    'h-chinese': findTb(SUBJECT_CODE_MAP['h-chinese'], 10),
+    'h-english': findTb(SUBJECT_CODE_MAP['h-english'], 10),
+    'h-physics': findTb(SUBJECT_CODE_MAP['h-physics'], 10),
+    'h-chemistry': findTb(SUBJECT_CODE_MAP['h-chemistry'], 10),
+    'h-biology': findTb(SUBJECT_CODE_MAP['h-biology'], 10),
+    'h-history': findTb(SUBJECT_CODE_MAP['h-history'], 10),
+    'h-geography': findTb(SUBJECT_CODE_MAP['h-geography'], 10),
+    'h-politics': findTb(SUBJECT_CODE_MAP['h-politics'], 10),
+  };
+
   for (const q of SAMPLE_QUESTIONS) {
     const subjectId = SUBJECT_CODE_MAP[q.subjectCode];
     if (!subjectId) continue;
@@ -1289,28 +1370,11 @@ export async function main() {
       },
     });
 
-    // 关联章节（小学/初中/高中各学段教材映射）
-    const textbookMap: Record<string, string | undefined> = {
-      // 小学
-      'p-math': pMathG1?.id ?? pMathG6?.id,
-      'p-chinese': pChineseG1?.id,
-      'p-english': pEnglishG3?.id,
-      // 初中
-      math: mathTextbook?.id,
-      chinese: chineseTextbook?.id,
-      english: englishTextbook?.id,
-      physics: physicsTextbook?.id,
-      // 高中
-      'h-math': hMathG10?.id,
-      'h-chinese': hChineseG10?.id,
-      'h-english': hEnglishG10?.id,
-      'h-physics': hPhysicsG10?.id,
-      'h-chemistry': hChemistryG10?.id,
-    };
-    const tbId = textbookMap[q.subjectCode];
-    if (tbId && q.chapterTitle) {
+    // 关联章节
+    const tb = textbookForQuestion[q.subjectCode];
+    if (tb?.id && q.chapterTitle) {
       const chapter = await prisma.chapter.findFirst({
-        where: { title: q.chapterTitle, textbookId: tbId },
+        where: { title: q.chapterTitle, textbookId: tb.id },
       });
       if (chapter) {
         await prisma.question.update({

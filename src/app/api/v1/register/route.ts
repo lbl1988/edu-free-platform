@@ -10,12 +10,13 @@ import { rateLimit } from '@/lib/redis';
 import { Role } from '@prisma/client';
 
 // 注册请求体校验
+// 注：grade 使用 z.coerce.number() 兼容前端 Ant Design Select 可能传出的字符串数值
 const RegisterSchema = z.object({
   phone: z.string(),
   password: z.string(),
   nickname: z.string().max(32).optional(),
   role: z.nativeEnum(Role).default(Role.STUDENT),
-  grade: z.number().int().optional(),
+  grade: z.coerce.number().int().optional(),
 });
 
 export async function POST(request: NextRequest) {

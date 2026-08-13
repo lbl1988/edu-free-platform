@@ -3,7 +3,8 @@ import { verifyAccessToken } from '@/lib/auth';
 
 // 受保护路径前缀：匹配则需要登录
 // 公开读取路径（courses/questions/exams/lessons/contests/articles/subjects/textbooks）
-// 不在此列表中，允许匿名访问；写操作由 route handler 内部 requireTeacher/requireLogin 拦截
+// 公开鉴权端点（login/register/logout/refresh）均不在此列表
+// 写操作由 route handler 内部 requireTeacher/requireLogin 拦截
 const PROTECTED = [
   '/api/v1/user',
   '/api/v1/papers',
@@ -12,10 +13,6 @@ const PROTECTED = [
   '/api/v1/ai-gen',
   '/api/v1/me',
   '/api/v1/recommend',
-  '/api/v1/register',
-  '/api/v1/login',
-  '/api/v1/logout',
-  '/api/v1/refresh',
   '/dashboard',
 ];
 

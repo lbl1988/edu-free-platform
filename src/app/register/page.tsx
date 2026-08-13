@@ -15,10 +15,17 @@ export default function RegisterPage() {
   async function onFinish(values: { phone: string; password: string; nickname?: string; grade: number }) {
     setLoading(true);
     try {
+      const payload = {
+        phone: values.phone,
+        password: values.password,
+        nickname: values.nickname,
+        role: 'STUDENT' as const,
+        grade: Number(values.grade), // 强制 number，与后端契约对齐
+      };
       const res = await fetch('/api/v1/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...values, role: 'STUDENT' }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -47,7 +54,14 @@ export default function RegisterPage() {
           <Form.Item label="手机号" name="phone" rules={[{ required: true, message: '请输入手机号' }]}>
             <Input placeholder="11 位手机号" maxLength={11} />
           </Form.Item>
-          <Form.Item label="密码" name="password" rules={[{ required: true, message: '请输入密码' }]}>
+          <Form.Item label="密码" name="password" rules={[
+            { required: true, message: '请输入密码' },
+            { min: 8, max: 64, message: '密码长度应为 8-64 位' },
+            {
+              pattern: /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d!@#$%^&*()_+\-=]{8,64}$/,
+              message: '密码需同时包含字母与数字',
+            },
+          ]}>
             <Input.Password placeholder="8-64 位，含字母与数字" />
           </Form.Item>
           <Form.Item label="昵称（选填）" name="nickname">

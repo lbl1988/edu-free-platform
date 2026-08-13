@@ -21,8 +21,8 @@ function LoginInner() {
         credentials: 'include',
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        message.error(data.message || '登录失败');
+      if (!res.ok || !data.success) {
+        message.error(data.error?.message || data.message || '手机号或密码错误');
         return;
       }
       message.success('登录成功');
@@ -42,7 +42,10 @@ function LoginInner() {
           <Form.Item
             label="手机号"
             name="phone"
-            rules={[{ required: true, message: '请输入手机号' }, { pattern: /^1[3-9]\d{9}$/, message: '手机号格式不正确' }]}
+            rules={[
+              { required: true, message: '请输入手机号' },
+              { pattern: /^1[3-9]\d{9}$/, message: '手机号格式不正确' },
+            ]}
           >
             <Input placeholder="请输入手机号" size="large" />
           </Form.Item>
