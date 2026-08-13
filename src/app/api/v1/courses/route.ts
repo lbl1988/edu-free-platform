@@ -36,22 +36,35 @@ export async function GET(request: NextRequest) {
   if (boardType) where.boardType = boardType;
   if (keyword) where.title = { contains: keyword, mode: 'insensitive' };
 
-  const [total, items] = await Promise.all([
-    prisma.course.count({ where }),
-    prisma.course.findMany({
-      where,
-      include: {
-        subject: { select: { id: true, name: true } },
-        teacher: { select: { id: true, nickname: true } },
-        _count: { select: { enrollments: true, lessons: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit,
-    }),
-  ]);
-
-  return okPaginated(items, { page, limit, total });
+  try {
+    const [total, items] = await Promise.all([
+      prisma.course.count({ where }),
+      prisma.course.findMany({
+        where,
+        include: {
+          subject: { select: { id: true, name: true } },
+          teacher: { select: { id: true, nickname: true } },
+          _count: { select: { enrollments: true, lessons: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+    return okPaginated(items, { page, limit, total });
+  } catch (e: any) {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: {
+          code: 'SERVER_ERROR',
+          message: `服务器错误: ${e.message || '数据库查询失败'}`,
+          details: process.env.NODE_ENV === 'development' ? e.stack : undefined,
+        },
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
 }
 
 // POST /api/v1/courses — 创建课程（仅教师/管理员）

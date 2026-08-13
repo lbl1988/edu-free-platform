@@ -83,6 +83,18 @@ export default function CoursesPage() {
     Object.entries(filters).forEach(([k, v]) => v && params.set(k, v));
     try {
       const res = await fetch(`/api/v1/courses?${params}`, { credentials: 'include' });
+      const contentType = res.headers.get('content-type') || '';
+
+      // 如果响应不是 JSON（常见于 Next.js 默认 500 HTML 错误页）
+      if (!contentType.includes('application/json')) {
+        const text = (await res.text().catch(() => '')).slice(0, 200);
+        message.error(
+          `服务器返回了错误 (HTTP ${res.status})，可能是数据库迁移未执行或服务异常。请等待部署完成后刷新重试。`,
+        );
+        console.error('[courses] 非 JSON 响应:', text);
+        return;
+      }
+
       const data = await res.json();
       if (data.success) {
         setList(data.data);
@@ -91,8 +103,10 @@ export default function CoursesPage() {
       } else {
         message.error(data.error?.message ?? '加载失败');
       }
-    } catch {
-      message.error('网络错误');
+    } catch (e: any) {
+      // 网络层异常（DNS/连接被拒/CORS）
+      message.error('网络连接异常，请检查网络或稍后重试。如果是刚部署，请等待数据库迁移完成后刷新。');
+      console.error('[courses] fetch error:', e?.message);
     } finally {
       setLoading(false);
     }
