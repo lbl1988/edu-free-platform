@@ -108,7 +108,7 @@ export default function ArticlesPage() {
     <main className="max-w-7xl mx-auto px-6 py-8">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <Link href="/dashboard" className="text-emerald-600 text-sm">← 返回控制台</Link>
+          <Link href="/" className="text-emerald-600 text-sm">← 返回首页</Link>
           <h1 className="text-2xl font-bold mt-1">
             {boardType === COMPETITION ? '竞赛资讯' : '课外知识'}
           </h1>

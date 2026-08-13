@@ -4,15 +4,16 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireLogin } from '@/lib/guards';
+import { getCurrentUser } from '@/lib/auth-context';
 import { ok, badRequest, notFound, forbidden } from '@/lib/api-response';
 import { BoardType, CourseStatus, Role } from '@prisma/client';
 
 type Ctx = { params: { id: string } };
 
 // GET /api/v1/courses/{id} — 课程详情（含课时列表）
+// 匿名/学生：仅看已发布课程；教师：看自己的；管理员：全部
 export async function GET(request: NextRequest, { params }: Ctx) {
-  const [user, err] = await requireLogin(request);
-  if (err) return err;
+  const maybeUser = await getCurrentUser(request);
 
   const course = await prisma.course.findUnique({
     where: { id: params.id },
@@ -29,12 +30,16 @@ export async function GET(request: NextRequest, { params }: Ctx) {
   });
   if (!course) return notFound('课程不存在');
 
-  // 学生只能看已发布课程（或已选课）
-  if (user!.role === Role.STUDENT && course.status !== CourseStatus.PUBLISHED) {
-    const enrolled = await prisma.courseEnrollment.findUnique({
-      where: { courseId_studentId: { courseId: course.id, studentId: user!.id } },
-    });
-    if (!enrolled) return forbidden('课程未发布');
+  // 匿名/学生只能看已发布课程（学生若已选课则可看未发布）
+  if ((!maybeUser || maybeUser.role === Role.STUDENT) && course.status !== CourseStatus.PUBLISHED) {
+    if (maybeUser?.role === Role.STUDENT) {
+      const enrolled = await prisma.courseEnrollment.findUnique({
+        where: { courseId_studentId: { courseId: course.id, studentId: maybeUser.id } },
+      });
+      if (!enrolled) return forbidden('课程未发布');
+    } else {
+      return forbidden('课程未发布');
+    }
   }
 
   return ok(course);

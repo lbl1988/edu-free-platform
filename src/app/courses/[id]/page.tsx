@@ -52,10 +52,6 @@ export default function CourseDetailPage() {
         fetch(`/api/v1/courses/${id}`, { credentials: 'include' }),
         fetch(`/api/v1/courses/${id}/materials?limit=50`, { credentials: 'include' }),
       ]);
-      if (cRes.status === 401) {
-        router.push(`/login?redirect=/courses/${id}`);
-        return;
-      }
       const cd = await cRes.json();
       if (cd.success) setCourse(cd.data);
       else message.error(cd.error?.message ?? '加载失败');

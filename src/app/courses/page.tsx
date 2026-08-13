@@ -88,8 +88,6 @@ export default function CoursesPage() {
         setList(data.data);
         setTotal(data.pagination.total);
         setPage(p);
-      } else if (res.status === 401) {
-        router.push('/login?redirect=/courses');
       } else {
         message.error(data.error?.message ?? '加载失败');
       }
@@ -109,7 +107,7 @@ export default function CoursesPage() {
     <main className="max-w-6xl mx-auto px-6 py-10">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">课程中心</h1>
-        <Link href="/dashboard" className="text-emerald-600 text-sm">个人中心</Link>
+        <Link href="/" className="text-emerald-600 text-sm">← 返回首页</Link>
       </div>
 
       {/* 筛选栏 */}

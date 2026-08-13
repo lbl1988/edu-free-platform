@@ -83,7 +83,7 @@ export default function ContestsPage() {
     <main className="max-w-7xl mx-auto px-6 py-8">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <Link href="/dashboard" className="text-emerald-600 text-sm">← 返回控制台</Link>
+          <Link href="/" className="text-emerald-600 text-sm">← 返回首页</Link>
           <h1 className="text-2xl font-bold mt-1">全国竞赛</h1>
           <p className="text-sm text-gray-500 mt-1">
             教育部白名单赛事与编程竞赛，线上 OJ 判题系统支持

@@ -56,14 +56,13 @@ export default function ExamListPage() {
 
   async function loadUser() {
     const res = await fetch('/api/v1/user', { credentials: 'include' });
-    if (res.status === 401) { router.push('/login?redirect=/exams'); return null; }
+    if (res.status === 401) return null; // 匿名用户，不跳转
     const data = await res.json();
-    return data.success ? data.data.user : null;
+    return data.success ? data.data.user ?? data.data : null;
   }
 
   async function loadList() {
     const res = await fetch(`/api/v1/exams?${subjectId ? `subjectId=${subjectId}` : ''}`, { credentials: 'include' });
-    if (res.status === 401) { router.push('/login?redirect=/exams'); return; }
     const data = await res.json();
     if (data.success) {
       const exams: ExamItem[] = data.data.exams || [];
@@ -104,14 +103,18 @@ export default function ExamListPage() {
     <main className="max-w-6xl mx-auto px-4 md:px-6 py-8">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div>
-          <Link href="/dashboard" className="text-emerald-600 text-sm">← 返回控制台</Link>
+          <Link href="/" className="text-emerald-600 text-sm">← 返回首页</Link>
           <h1 className="text-2xl font-bold mt-1">在线考试</h1>
           <p className="text-sm text-gray-500">
-            {role === 'STUDENT' ? '按进入时段开始考试，违规次数超限将自动标记' : '教师可创建并发布考试，查看全班成绩'}
+            {role === 'STUDENT'
+              ? '按进入时段开始考试，违规次数超限将自动标记'
+              : role === 'TEACHER' || role === 'ADMIN'
+                ? '教师可创建并发布考试，查看全班成绩'
+                : '登录后可参加考试，查看历史成绩'}
           </p>
         </div>
         <Space wrap>
-          {role !== 'STUDENT' && (
+          {(role === 'TEACHER' || role === 'ADMIN') && (
             <Link href="/exams/new">
               <Button type="primary">+ 创建考试</Button>
             </Link>
@@ -165,7 +168,7 @@ function ExamCard({ exam, role }: { exam: ExamItem; role: string | null }) {
         <h3 className="text-lg font-semibold leading-snug flex-1">{exam.title}</h3>
         <Space size={4}>
           <Tag color={t.color}>{t.text}</Tag>
-          {role !== 'STUDENT' && <Tag color={s.color}>{s.text}</Tag>}
+          {(role === 'TEACHER' || role === 'ADMIN') && <Tag color={s.color}>{s.text}</Tag>}
           {role === 'STUDENT' && mr && <Tag color={STATUS_MAP[mr.status]?.color}>{STATUS_MAP[mr.status]?.text}</Tag>}
         </Space>
       </div>
@@ -185,7 +188,9 @@ function ExamCard({ exam, role }: { exam: ExamItem; role: string | null }) {
       </div>
       <div className="mt-auto flex items-center justify-between">
         <span className="text-xs text-gray-400">
-          {role !== 'STUDENT' ? `已有 ${exam._count.results} 人交卷` : (open ? '可进入' : '已截止')}
+          {role === 'TEACHER' || role === 'ADMIN'
+            ? `已有 ${exam._count.results} 人交卷`
+            : open ? '可进入' : '已截止'}
         </span>
         <Space>
           {role === 'STUDENT' ? (
@@ -198,11 +203,13 @@ function ExamCard({ exam, role }: { exam: ExamItem; role: string | null }) {
                 </Button>
               )}
             </>
-          ) : (
+          ) : role === 'TEACHER' || role === 'ADMIN' ? (
             <>
               <Button onClick={() => router.push(`/exams/${exam.id}/results`)}>成绩</Button>
               <Button onClick={() => router.push(`/exams/${exam.id}/edit`)}>管理</Button>
             </>
+          ) : (
+            <Button type="primary" disabled>登录后参加</Button>
           )}
         </Space>
       </div>

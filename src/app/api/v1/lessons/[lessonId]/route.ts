@@ -2,15 +2,14 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireLogin } from '@/lib/guards';
+import { getCurrentUser } from '@/lib/auth-context';
 import { ok, notFound, forbidden } from '@/lib/api-response';
 import { CourseStatus, Role } from '@prisma/client';
 
 type Ctx = { params: { lessonId: string } };
 
 export async function GET(request: NextRequest, { params }: Ctx) {
-  const [user, err] = await requireLogin(request);
-  if (err) return err;
+  const maybeUser = await getCurrentUser(request);
 
   const lesson = await prisma.lesson.findUnique({
     where: { id: params.lessonId },
@@ -37,22 +36,29 @@ export async function GET(request: NextRequest, { params }: Ctx) {
   if (!lesson) return notFound('课时不存在');
 
   const { course } = lesson;
-  if (user!.role === Role.STUDENT && course.status !== CourseStatus.PUBLISHED) {
-    const enrolled = await prisma.courseEnrollment.findUnique({
-      where: {
-        courseId_studentId: { courseId: course.id, studentId: user!.id },
-      },
-    });
-    if (!enrolled) return forbidden('无权查看该课时');
+  // 匿名/学生只能看已发布课程的课时
+  if ((!maybeUser || maybeUser.role === Role.STUDENT) && course.status !== CourseStatus.PUBLISHED) {
+    if (maybeUser?.role === Role.STUDENT) {
+      const enrolled = await prisma.courseEnrollment.findUnique({
+        where: {
+          courseId_studentId: { courseId: course.id, studentId: maybeUser.id },
+        },
+      });
+      if (!enrolled) return forbidden('无权查看该课时');
+    } else {
+      return forbidden('无权查看该课时');
+    }
   }
 
-  const note = await prisma.note.findUnique({
-    where: {
-      lessonId_studentId: { lessonId: params.lessonId, studentId: user!.id },
-    },
-  });
+  // 笔记为个人数据，仅登录用户返回
+  const note = maybeUser
+    ? await prisma.note.findUnique({
+        where: {
+          lessonId_studentId: { lessonId: params.lessonId, studentId: maybeUser.id },
+        },
+      })
+    : null;
 
-  // TODO: 签名 URL 生成（前端暂通过 /api/v1/materials/[id]/download 代理，此处先返回 objectKey）
   return ok({
     lesson: {
       id: lesson.id,

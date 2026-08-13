@@ -52,10 +52,6 @@ export default function QuestionsPage() {
     Object.entries(filters).forEach(([k, v]) => v && params.set(k, v));
     try {
       const res = await fetch(`/api/v1/questions?${params}`, { credentials: 'include' });
-      if (res.status === 401) {
-        router.push('/login?redirect=/questions');
-        return;
-      }
       const data = await res.json();
       if (data.success) {
         setList(data.data.map((q: any) => ({
