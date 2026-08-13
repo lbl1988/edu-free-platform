@@ -1,6 +1,35 @@
+'use client';
+
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+
+interface UserInfo {
+  id: string;
+  phone: string;
+  nickname: string | null;
+  role: string;
+}
 
 export default function HomePage() {
+  const router = useRouter();
+  const [user, setUser] = useState<UserInfo | null>(null);
+  const [checked, setChecked] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/v1/user', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+      .then((d) => {
+        if (d?.success && d?.data) {
+          setUser(d.data);
+        }
+      })
+      .catch(() => {
+        // 未登录，保持 user 为 null 即可，不做强制跳转（首页允许匿名访问）
+      })
+      .finally(() => setChecked(true));
+  }, []);
+
   return (
     <main>
       {/* Hero */}
@@ -16,19 +45,51 @@ export default function HomePage() {
             汇聚全国权威专家学者志愿者贡献的学习资料与视频，全部内容永久免费。
             覆盖课堂学科、课外知识、全国竞赛、真题刷题、在线考试五大板块。
           </p>
-          <div className="flex gap-4">
-            <Link
-              href="/register"
-              className="bg-white text-emerald-700 font-semibold px-6 py-3 rounded-lg hover:bg-emerald-50 transition"
-            >
-              免费注册
-            </Link>
-            <Link
-              href="/login"
-              className="border border-white/40 text-white font-semibold px-6 py-3 rounded-lg hover:bg-white/10 transition"
-            >
-              登录
-            </Link>
+
+          <div className="flex flex-wrap gap-4">
+            {checked && user ? (
+              <>
+                {/* 已登录态：优先展示个人中心入口 */}
+                <Link
+                  href="/dashboard"
+                  className="bg-white text-emerald-700 font-semibold px-6 py-3 rounded-lg hover:bg-emerald-50 transition"
+                >
+                  个人中心
+                </Link>
+                <span className="border border-white/25 text-white/80 text-sm px-4 py-3 rounded-lg flex items-center">
+                  欢迎，{user.nickname ?? user.phone}
+                  {user.role ? <span className="ml-2 px-2 py-0.5 rounded bg-white/15 text-xs">{user.role}</span> : null}
+                </span>
+                <button
+                  onClick={async () => {
+                    await fetch('/api/v1/logout', { method: 'POST', credentials: 'include' });
+                    setUser(null);
+                    router.refresh();
+                  }}
+                  className="border border-white/40 text-white font-semibold px-6 py-3 rounded-lg hover:bg-white/10 transition"
+                >
+                  退出登录
+                </button>
+              </>
+            ) : (
+              <>
+                {/* 未登录态：显示注册/登录引导 */}
+                <Link
+                  href="/register"
+                  className="bg-white text-emerald-700 font-semibold px-6 py-3 rounded-lg hover:bg-emerald-50 transition"
+                >
+                  免费注册
+                </Link>
+                <Link
+                  href="/login"
+                  className="border border-white/40 text-white font-semibold px-6 py-3 rounded-lg hover:bg-white/10 transition"
+                >
+                  登录
+                </Link>
+              </>
+            )}
+
+            {/* 公共板块入口：登录/未登录均可见 */}
             <Link
               href="/courses"
               className="border border-white/40 text-white font-semibold px-6 py-3 rounded-lg hover:bg-white/10 transition"
@@ -42,10 +103,22 @@ export default function HomePage() {
               题库刷题
             </Link>
             <Link
-              href="/wrong"
+              href="/exams"
               className="border border-white/40 text-white font-semibold px-6 py-3 rounded-lg hover:bg-white/10 transition"
             >
-              错题本
+              在线考试
+            </Link>
+            <Link
+              href="/articles"
+              className="border border-white/40 text-white font-semibold px-6 py-3 rounded-lg hover:bg-white/10 transition"
+            >
+              课外知识
+            </Link>
+            <Link
+              href="/contests"
+              className="border border-white/40 text-white font-semibold px-6 py-3 rounded-lg hover:bg-white/10 transition"
+            >
+              竞赛与OJ
             </Link>
           </div>
         </div>
