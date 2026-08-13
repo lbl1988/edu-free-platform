@@ -127,6 +127,7 @@ model User {
   favorites            Favorite[]
   paperAttempts        PaperAttempt[]
   practicePapers       PracticePaper[] @relation("PracticePaperCreator")
+  examsAsCreator       Exam[]          @relation("ExamCreator")
 
   examResults          ExamResult[]
   refreshTokens        RefreshToken[]
@@ -549,39 +550,98 @@ model PaperAttempt {
   @@unique([paperId, studentId, status, submittedAt])
 }
 
-// ==================== 考试域（骨架，第一期完善）====================
+// ==================== 考试域（第一期：在线考试服务）====================
 
 model Exam {
-  id          String   @id @default(cuid())
-  title       String
-  examType    ExamType
-  subjectId   Int
-  grade       Int
-  startTime   DateTime
-  endTime     DateTime
-  duration    Int      // 分钟
-  maxCheating Int      @default(3) // 最大切屏次数
-  creatorId   String
-  createdAt   DateTime @default(now())
+  id             String        @id @default(cuid())
+  title          String
+  examType       ExamType      // FORMAL 正式 | MOCK 模拟
+  subjectId      Int
+  subject        Subject       @relation(fields: [subjectId], references: [id])
+  grade          Int
+  // 时间窗口：允许进入时段 [startTime, endTime]；进入后单独计时 duration 分钟
+  startTime      DateTime
+  endTime        DateTime
+  duration       Int           // 分钟（进入后倒计时）
+  maxCheating    Int           @default(3) // 最大违规次数，超阈值自动标记 VIOLATION_SUBMIT
+  creatorId      String
+  creator        User          @relation("ExamCreator", fields: [creatorId], references: [id])
+  // 题目：直接关联题库题（与 PracticePaper 独立，便于正式考试选题冻结）
+  questions      ExamQuestion[]
+  // 可选：基于练习卷快速生成考试（题目从卷中复制）
+  sourcePaperId  String?
+  sourcePaper    PracticePaper? @relation(fields: [sourcePaperId], references: [id], onDelete: SetNull)
+  totalScore     Int           @default(100)
+  // 发布控制：草稿时学生不可见；归档后不可进入
+  status         CourseStatus  @default(DRAFT)  // 复用 CourseStatus: DRAFT|PUBLISHED|ARCHIVED
+  // 防作弊：允许重考次数（默认 0 = 仅一次）
+  retryAllowed   Int           @default(0)
+  // 学生端提交即自动评分客观题；主观题由教师人工批改
+  aiAutoGrade    Boolean       @default(true)
+  passScore      Float?        // 及格分（可选）
+  createdAt      DateTime      @default(now())
 
-  results     ExamResult[]
+  results        ExamResult[]
 
   @@index([subjectId, grade])
   @@index([examType, startTime])
+  @@index([creatorId])
+  @@index([status])
+}
+
+/// 考试题目（与题库 Question 解耦，保存考试当时的快照，避免题目后续修改影响已发考试）
+model ExamQuestion {
+  id           String   @id @default(cuid())
+  examId       String
+  exam         Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  // 原题库题 ID（可空：纯手动创建的考试题）
+  srcQuestionId String?
+  srcQuestion  Question? @relation(fields: [srcQuestionId], references: [id], onDelete: SetNull)
+  // 题目快照
+  content      String
+  options      Json?
+  questionType QuestionType
+  difficulty   Int
+  answer       String?
+  analysis     String?
+  sortOrder    Int      @default(0)
+  // 单题分值
+  perScore     Int      @default(5)
+
+  answers      ExamAnswer[]
+
+  @@unique([examId, sortOrder])
+  @@index([examId])
 }
 
 model ExamResult {
   id              String     @id @default(cuid())
   examId          String
-  exam            Exam       @relation(fields: [examId], references: [id])
+  exam            Exam       @relation(fields: [examId], references: [id], onDelete: Cascade)
   studentId       String
-  student         User       @relation(fields: [studentId], references: [id])
+  student         User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  // 得分
   score           Float?
-  objectiveScore  Float?
-  subjectiveScore Float?
+  objectiveScore  Float?     // 客观题得分
+  subjectiveScore Float?     // 主观题得分（教师批改，第一期支持手动录入分数）
+  totalScore      Int        @default(100) // 当时考试总分快照
   status          ExamStatus @default(NOT_STARTED)
-  startTime       DateTime?
-  submitTime      DateTime?
+  // 时间线
+  startTime       DateTime?  // 进入考试时间
+  deadline        DateTime?  // 应交卷时间（startTime + duration）
+  submitTime      DateTime?  // 实际交卷时间
+  // 答题统计
+  correctCount    Int        @default(0)
+  totalCount      Int        @default(0)
+  // IP 快照
+  startIp         String?
+  endIp           String?
+  // 作弊计数
+  cheatingCount   Int        @default(0)
+  // 是否已手动批改（主观题）
+  graded          Boolean    @default(false)
+  gradedBy        String?
+  gradedAt        DateTime?
   createdAt       DateTime   @default(now())
 
   violations      ExamViolation[]
@@ -589,31 +649,38 @@ model ExamResult {
 
   @@unique([examId, studentId])
   @@index([studentId])
+  @@index([status])
 }
 
 model ExamAnswer {
   id           String   @id @default(cuid())
   resultId     String
-  result       ExamResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
-  questionId   String
+  result       ExamResult   @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  examQuestionId String
+  examQuestion ExamQuestion @relation(fields: [examQuestionId], references: [id])
   answer       String?
+  isCorrect    Boolean?
   aiScore      Float?
   finalScore   Float?
+  perScore     Int      // 快照：考试当时该题分值
   answeredAt   DateTime @default(now())
+  // 快速答题判定（< 3 秒视为作弊线索）
+  answeredFast Boolean?
 
   @@index([resultId])
-  @@index([questionId])
+  @@index([examQuestionId])
 }
 
 model ExamViolation {
   id        String   @id @default(cuid())
   resultId  String
   result    ExamResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
-  type      String   // fullscreen_exit | tab_switch | copy_attempt | ip_change | fast_answer
+  type      String   // fullscreen_exit | tab_switch | copy_attempt | ip_change | fast_answer | overdue
   detail    String?
   occurredAt DateTime @default(now())
 
   @@index([resultId])
+  @@index([type])
 }
 
 // ==================== AI 内容域（骨架，第二期完善）====================
