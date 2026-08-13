@@ -20,15 +20,19 @@ export default function RegisterPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...values, role: 'STUDENT' }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        message.error(data.error?.message || data.message || '注册失败');
+        return;
+      }
       if (!data.success) {
         message.error(data.error?.message ?? '注册失败');
         return;
       }
       message.success('注册成功，请登录');
       router.push('/login');
-    } catch {
-      message.error('网络错误，请重试');
+    } catch (e: any) {
+      message.error(e?.message || '网络错误，请检查网络后重试');
     } finally {
       setLoading(false);
     }

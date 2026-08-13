@@ -44,3 +44,5 @@ export const forbidden = (msg = '无权访问') => fail('FORBIDDEN', msg, 403);
 export const notFound = (msg = '资源不存在') => fail('NOT_FOUND', msg, 404);
 export const conflict = (msg: string) => fail('CONFLICT', msg, 409);
 export const tooMany = (msg = '请求过于频繁，请稍后再试') => fail('RATE_LIMITED', msg, 429);
+export const serverError = (msg = '服务器内部错误') => fail('SERVER_ERROR', msg, 500);
+export const serviceUnavailable = (msg = '服务暂不可用，请稍后重试') => fail('SERVICE_UNAVAILABLE', msg, 503);

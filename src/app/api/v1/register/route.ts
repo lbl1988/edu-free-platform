@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/auth.server';
-import { ok, badRequest, conflict, tooMany } from '@/lib/api-response';
+import { ok, badRequest, conflict, tooMany, serviceUnavailable } from '@/lib/api-response';
 import { isPhone, isStrongPassword, isValidGrade, getClientIp } from '@/lib/utils';
 import { rateLimit } from '@/lib/redis';
 import { Role } from '@prisma/client';
@@ -45,26 +45,43 @@ export async function POST(request: NextRequest) {
     if (!isValidGrade(grade)) return badRequest('年级需为 1-12');
   }
 
-  // 唯一性校验
-  const exists = await prisma.user.findUnique({ where: { phone }, select: { id: true } });
-  if (exists) return conflict('该手机号已注册');
+  try {
+    // 唯一性校验
+    const exists = await prisma.user.findUnique({ where: { phone }, select: { id: true } });
+    if (exists) return conflict('该手机号已注册');
 
-  // 创建用户 + 学生初始化学习画像
-  const passwordHash = await hashPassword(password);
-  const user = await prisma.user.create({
-    data: {
-      phone,
-      passwordHash,
-      nickname,
-      role,
-      grade: role === Role.STUDENT ? grade : null,
-      learningProfile: role === Role.STUDENT ? { create: {} } : undefined,
-      lastLoginAt: new Date(),
-    },
-    select: { id: true, phone: true, nickname: true, role: true, grade: true, createdAt: true },
-  });
+    // 创建用户 + 学生初始化学习画像
+    const passwordHash = await hashPassword(password);
+    const user = await prisma.user.create({
+      data: {
+        phone,
+        passwordHash,
+        nickname,
+        role,
+        grade: role === Role.STUDENT ? grade : null,
+        learningProfile: role === Role.STUDENT ? { create: {} } : undefined,
+        lastLoginAt: new Date(),
+      },
+      select: { id: true, phone: true, nickname: true, role: true, grade: true, createdAt: true },
+    });
 
-  // 学生返回一次性凭证码（用于家长绑定）
-  // 注：凭证码本身非登录凭证，此处先返回基础注册信息，凭证码生成在家长绑定接口实现
-  return ok({ user }, 201);
+    // 学生返回一次性凭证码（用于家长绑定）
+    // 注：凭证码本身非登录凭证，此处先返回基础注册信息，凭证码生成在家长绑定接口实现
+    return ok({ user }, 201);
+  } catch (e: any) {
+    // 数据库连接错误
+    if (e?.code === 'P2002' && e?.meta?.target?.includes('phone')) {
+      return conflict('该手机号已注册');
+    }
+    if (
+      e?.name === 'PrismaClientInitializationError' ||
+      e?.message?.includes("Can't reach database server") ||
+      e?.message?.includes('database server')
+    ) {
+      console.error('[Register] Database error:', e?.message);
+      return serviceUnavailable('数据库连接失败，请稍后重试或联系管理员');
+    }
+    console.error('[Register] Unexpected error:', e);
+    return serviceUnavailable('注册失败，请稍后重试');
+  }
 }
