@@ -139,6 +139,8 @@ model User {
   contestSubmissions   ContestSubmission[]
   // 课外知识
   authoredArticles     Article[]       @relation("ArticleAuthor")
+  // 课程 AI 聊天会话（第二期）
+  chatSessions         CourseChatSession[]
 
   @@index([role])
   @@index([grade])
@@ -179,6 +181,25 @@ model LearningProfile {
   updatedAt         DateTime @updatedAt
 
   @@index([lastActiveAt])
+}
+
+// 课程 AI 聊天会话：每门课程每个学生一条会话记录（含历史消息）
+model CourseChatSession {
+  id         String   @id @default(cuid())
+  courseId   String
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  studentId  String
+  student    User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  // 消息历史：[{ role: 'user' | 'assistant', content, citations?:[], ts }]
+  messages   Json     @default("[]")
+  messageCount Int   @default(0)
+  lastMessageAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([courseId, studentId])
+  @@index([studentId])
+  @@index([courseId])
 }
 
 /// 志愿者认证：专家/教师志愿者贡献课程的认证记录
@@ -259,6 +280,8 @@ model Course {
   enrollments CourseEnrollment[]
   lessons     Lesson[]
   materials   Material[]
+  // 课程 AI 聊天会话（第二期）
+  chatSessions CourseChatSession[]
   // 第三期：竞赛关联
   contestsAsCourse  Contest[]  @relation("ContestLinkedCourse")
 
