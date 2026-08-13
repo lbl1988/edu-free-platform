@@ -13,7 +13,9 @@ const PROTECTED = [
   '/api/v1/ai-gen',
   '/api/v1/me',
   '/api/v1/recommend',
+  '/api/v1/admin',
   '/dashboard',
+  '/admin',
 ];
 
 // 仅管理员路径
@@ -65,6 +67,6 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // 仅对 API 与 dashboard 路径生效，避免拦截静态资源
-  matcher: ['/api/v1/:path*', '/dashboard/:path*'],
+  // 仅对 API、dashboard、admin 路径生效，避免拦截静态资源
+  matcher: ['/api/v1/:path*', '/dashboard/:path*', '/admin/:path*'],
 };

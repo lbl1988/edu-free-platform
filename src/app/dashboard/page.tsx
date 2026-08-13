@@ -365,6 +365,9 @@ export default function DashboardPage() {
             <Button>返回首页</Button>
           </Link>
           {user.role === 'ADMIN' && (
+            <Link href="/admin/crawl"><Button>课程采集</Button></Link>
+          )}
+          {user.role === 'ADMIN' && (
             <Button type="primary" ghost onClick={handleRefreshRecommend}>刷新推荐缓存</Button>
           )}
           <Button onClick={handleLogout}>登出</Button>

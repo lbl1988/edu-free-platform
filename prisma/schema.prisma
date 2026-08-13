@@ -257,6 +257,7 @@ model Subject {
   exams          Exam[]
   contests       Contest[]
   articles       Article[]
+  contentSources ContentSource[]
 }
 
 model Course {
@@ -274,6 +275,9 @@ model Course {
   // 教材版本（人教/北师大/苏教等），课堂学科板块必填，课外/竞赛可为空
   textbookId  String?
   textbook    Textbook?    @relation(fields: [textbookId], references: [id])
+  // 爬虫采集来源标记（去重用）：同一 sourceUrl 不会重复入库
+  sourceUrl   String?
+  sourceName  String?     // 来源名称（如"国家智慧教育平台"）
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -289,6 +293,80 @@ model Course {
   @@index([boardType, status])
   @@index([teacherId])
   @@index([textbookId])
+  @@index([sourceUrl])
+}
+
+// ==================== 爬虫采集系统 ====================
+
+/// 采集源类型
+enum SourceType {
+  RSS         // RSS/Atom 订阅源
+  JSON_API    // JSON API 接口
+  HTML_SCRAPING // HTML 页面解析
+}
+
+/// 采集源状态
+enum SourceStatus {
+  ACTIVE
+  PAUSED
+  ERROR
+}
+
+/// 内容采集源：配置化的课程数据来源
+model ContentSource {
+  id              String       @id @default(cuid())
+  name            String       // 来源名称（如"国家智慧教育平台-数学"）
+  url             String       // 采集入口 URL
+  sourceType      SourceType   // 采集方式
+  status          SourceStatus @default(ACTIVE)
+  // 学科 & 年级映射（将采集到的内容归入对应学科年级）
+  subjectId       Int?
+  subject         Subject?     @relation(fields: [subjectId], references: [id])
+  gradeLevel      String?      // PRIMARY / JUNIOR / SENIOR / ALL
+  grade           Int?         // 具体年级 1-12
+  // 解析配置：CSS 选择器 / JSON 路径 / RSS 命名空间等
+  parseConfig     Json?
+  // 调度参数
+  crawlIntervalHours Int       @default(24) // 自动采集间隔（小时）
+  lastCrawledAt   DateTime?
+  lastCrawlJobId  String?
+  // 统计
+  totalCrawled    Int          @default(0)
+  // robots.txt 合规
+  respectRobots   Boolean      @default(true)
+  // 限速（毫秒/请求）
+  rateLimitMs     Int          @default(1000)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  crawlJobs       CrawlJob[]
+
+  @@index([status])
+  @@index([subjectId, grade])
+}
+
+/// 采集任务执行记录
+model CrawlJob {
+  id          String   @id @default(cuid())
+  sourceId    String
+  source      ContentSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  status      String   @default("PENDING") // PENDING / RUNNING / SUCCESS / FAILED / PARTIAL
+  trigger     String   @default("MANUAL")  // MANUAL / SCHEDULED
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+  // 采集结果统计
+  itemsFound   Int      @default(0) // 源站发现的条目数
+  itemsAdded   Int      @default(0) // 新增入库
+  itemsUpdated Int      @default(0) // 更新已有
+  itemsSkipped Int      @default(0) // 跳过（重复/不合规）
+  // 错误信息
+  error       String?
+  log         String?   // 执行日志（截断存储）
+  createdAt   DateTime @default(now())
+
+  @@index([sourceId])
+  @@index([status])
+  @@index([startedAt])
 }
 
 /// 教材版本：按"年级—学科—教材版本"组织目录
