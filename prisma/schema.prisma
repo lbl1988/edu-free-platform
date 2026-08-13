@@ -133,6 +133,12 @@ model User {
   examResults          ExamResult[]
   refreshTokens        RefreshToken[]
   uploadedMaterials    Material[]
+  // 竞赛域
+  contestsAsCreator    Contest[]       @relation("ContestCreator")
+  contestEnrollments   ContestEnrollment[]
+  contestSubmissions   ContestSubmission[]
+  // 课外知识
+  authoredArticles     Article[]       @relation("ArticleAuthor")
 
   @@index([role])
   @@index([grade])
@@ -228,6 +234,8 @@ model Subject {
   textbooks      Textbook[]
   practicePapers PracticePaper[]
   exams          Exam[]
+  contests       Contest[]
+  articles       Article[]
 }
 
 model Course {
@@ -251,6 +259,8 @@ model Course {
   enrollments CourseEnrollment[]
   lessons     Lesson[]
   materials   Material[]
+  // 第三期：竞赛关联
+  contestsAsCourse  Contest[]  @relation("ContestLinkedCourse")
 
   @@index([grade, subjectId])
   @@index([boardType, status])
@@ -290,6 +300,7 @@ model Chapter {
   knowledgePoints KnowledgePoint[]
   lessons         Lesson[]
   questions       Question[]
+  articles        Article[]
 
   @@index([textbookId, parentId])
   @@index([sortOrder])
@@ -588,6 +599,8 @@ model Exam {
   createdAt      DateTime      @default(now())
 
   results        ExamResult[]
+  // 第三期：竞赛复用 Exam（一场正式竞赛 = 一次 Exam）
+  contestsAsExam Contest[]  @relation("ContestLinkedExam")
 
   @@index([subjectId, grade])
   @@index([examType, startTime])
@@ -733,4 +746,212 @@ model ContentReview {
 
   @@index([targetType, targetId])
   @@index([status])
+}
+
+// ==================== 课外知识域（第三期骨架）====================
+
+/// 课外文章 / 知识卡片：科学探索、人文历史、艺术启蒙等拓展内容
+model Article {
+  id              String      @id @default(cuid())
+  title           String
+  slug            String      @unique
+  summary         String?
+  content         String      // 富文本 HTML 或 Markdown 源
+  coverUrl        String?
+  boardType       BoardType   @default(EXTRACURRICULAR) // EXTRACURRICULAR | COMPETITION（竞赛资讯复用）
+  category        String      // 一级分类：sciences | humanities | arts | contest-news | ...
+  tags            String[]
+  // 关联知识点（可选），用于知识图谱与推荐
+  subjectId       Int?
+  subject         Subject?    @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  grade           Int?
+  chapterId       String?
+  chapter         Chapter?    @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  // 来源：人工编辑 | AI 生成 | 公开授权采集
+  source          String?
+  sourceUrl       String?
+  authorId        String?
+  author          User?       @relation("ArticleAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  viewCount       Int         @default(0)
+  likeCount       Int         @default(0)
+  reviewStatus    ReviewStatus @default(REVIEWER_PASSED)
+  publishedAt     DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([boardType, category])
+  @@index([subjectId, grade])
+  @@index([reviewStatus, publishedAt])
+  @@index([slug])
+}
+
+// ==================== 竞赛域（第三期：竞赛服务 + OJ 判题）====================
+
+model Contest {
+  id                String        @id @default(cuid())
+  title             String
+  shortTitle        String?       // 如 CSP-J 2026
+  // 教育部白名单赛事标记
+  whitelist         Boolean       @default(false)
+  subjectId         Int
+  subject           Subject       @relation(fields: [subjectId], references: [id])
+  stage             String        // 初赛/复赛/决赛 | 省级/国家级
+  year              Int
+  startTime         DateTime
+  endTime           DateTime
+  durationMin       Int           // 竞赛时长（分钟）
+  // 说明与奖励
+  intro             String?
+  awardInfo         String?
+  // 竞赛关联的课程（竞赛教程）
+  courseId          String?
+  course            Course?       @relation("ContestLinkedCourse", fields: [courseId], references: [id], onDelete: SetNull)
+  // 关联考试题（可复用 Exam 作为一次正式竞赛的题目与答题）
+  examId            String?
+  exam              Exam?         @relation("ContestLinkedExam", fields: [examId], references: [id], onDelete: SetNull)
+  creatorId         String
+  creator           User          @relation("ContestCreator", fields: [creatorId], references: [id])
+  published         Boolean       @default(false)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  enrollments       ContestEnrollment[]
+  problems          ContestProblem[]
+  submissions       ContestSubmission[]
+
+  @@index([subjectId, year])
+  @@index([whitelist, startTime])
+  @@index([published])
+}
+
+model ContestEnrollment {
+  id          String   @id @default(cuid())
+  contestId   String
+  contest     Contest  @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  // 报名信息
+  school      String?
+  province    String?
+  city        String?
+  enrolledAt  DateTime @default(now())
+
+  @@unique([contestId, studentId])
+  @@index([studentId])
+}
+
+/// OJ 题目（竞赛编程题）：与普通 Question 解耦，提供输入输出样例、时间内存限制
+model ContestProblem {
+  id              String       @id @default(cuid())
+  contestId       String
+  contest         Contest      @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  // 在竞赛中的编号：A/B/C 或 1001/1002
+  problemCode     String
+  title           String
+  description     String       // 题目描述（Markdown/富文本）
+  inputFormat     String?
+  outputFormat    String?
+  // 样例：[{ input, output, note }] JSON
+  samples         Json         @default("[]")
+  timeLimitMs     Int          @default(1000)
+  memoryLimitMB   Int          @default(128)
+  difficulty      Int          // 1-5
+  // 判定数据（MinIO 对象 key：zip 包中包含 *.in/*.out）
+  testdataKey     String?
+  totalSubmit     Int          @default(0)
+  totalAccept     Int          @default(0)
+  sortOrder       Int          @default(0)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  submissions     ContestSubmission[]
+
+  @@unique([contestId, problemCode])
+  @@index([contestId, sortOrder])
+}
+
+enum JudgeVerdict {
+  PENDING
+  JUDGING
+  ACCEPTED
+  WRONG_ANSWER
+  TIME_LIMIT_EXCEEDED
+  MEMORY_LIMIT_EXCEEDED
+  RUNTIME_ERROR
+  COMPILE_ERROR
+  PRESENTATION_ERROR
+  SYSTEM_ERROR
+}
+
+/// OJ 提交记录：考生提交的源码由 Docker 沙箱判题
+model ContestSubmission {
+  id            String        @id @default(cuid())
+  contestId     String
+  contest       Contest       @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  problemId     String
+  problem       ContestProblem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       User          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  // 语言：C | C++ | Java | Python | JavaScript | Go | Pascal | Rust
+  language      String
+  sourceCode    String        // 源码文本（加密存储可选）
+  codeLength    Int
+  // 判题结果
+  verdict       JudgeVerdict  @default(PENDING)
+  score         Int?          // IOI 赛制得分 0-100，ACM 赛制 100=AC
+  runTimeMs     Int?
+  runMemoryKB   Int?
+  // 编译/运行错误信息（脱敏后前端可展示）
+  message       String?
+  // 沙箱任务 ID（异步判题时跟踪）
+  judgeTaskId   String?
+  judgedAt      DateTime?
+  createdAt     DateTime      @default(now())
+
+  @@index([contestId, problemId])
+  @@index([studentId, contestId])
+  @@index([verdict])
+  @@index([judgeTaskId])
+}
+
+// ==================== 推荐与行为域（第四期骨架，ClickHouse 明细 + PG 聚合）====================
+
+/// 推荐召回候选缓存：离线任务每日写入，线上直接读取
+model RecallItem {
+  id         String   @id @default(cuid())
+  studentId  String
+  // 推荐场景：dashboard | course_detail | after_exam | extracurricular
+  scene      String
+  // 推荐项类型：course | question | article | contest | exam
+  itemType   String
+  itemId     String
+  score      Float    // 召回得分，用于排序
+  // 召回来源：popular | collaborative | content | knowledge_graph | u2i
+  source     String
+  rank       Int
+  createdAt  DateTime @default(now())
+
+  @@index([studentId, scene])
+  @@index([itemType, itemId])
+}
+
+/// 用户聚合行为摘要（ClickHouse 明细同步到 PG，用于特征）
+model UserBehaviorSummary {
+  id                String   @id @default(cuid())
+  studentId         String   @unique
+  // 近 7 / 30 天学习时长（分钟）
+  minutesLast7d     Int      @default(0)
+  minutesLast30d    Int      @default(0)
+  // 近 30 天答题数 / 正确率
+  questionsLast30d  Int      @default(0)
+  correctLast30d    Float    @default(0)
+  // 学科兴趣分布 JSON：{ [subjectId]: 权重 0-1 }
+  subjectWeights    Json     @default("{}")
+  // 最近一次会话时间
+  lastSessionAt     DateTime?
+  // 累计访问次数
+  visitCount        Int      @default(0)
+  updatedAt         DateTime @updatedAt
+
+  @@index([lastSessionAt])
 }
