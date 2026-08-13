@@ -3,6 +3,7 @@ import Redis, { type RedisOptions } from 'ioredis';
 // 懒加载：基础设施未启动时不阻塞应用启动（仅相关功能报错）
 let _client: Redis | null = null;
 let _connectPromise: Promise<Redis> | null = null;
+let _redisAvailable: boolean | null = null;
 
 function getOptions(): RedisOptions {
   return {
@@ -10,13 +11,34 @@ function getOptions(): RedisOptions {
     enableReadyCheck: true,
     lazyConnect: true,
     keyPrefix: 'edu:',
+    // 自动重连，但限制重连次数避免无限报错
+    retryStrategy(times) {
+      if (times > 3) {
+        console.warn('[Redis] 重连次数过多，停止重连');
+        return null;
+      }
+      return Math.min(times * 200, 2000);
+    },
   };
 }
 
-export function getRedis(): Redis {
-  if (_client) return _client;
+export function isRedisAvailable(): boolean {
+  if (_redisAvailable !== null) return _redisAvailable;
   const url = process.env.REDIS_URL;
-  _client = url ? new Redis(url, getOptions()) : new Redis(getOptions());
+  _redisAvailable = !!url;
+  if (!_redisAvailable) {
+    console.info('[Redis] REDIS_URL 未配置，Redis 功能将使用降级策略');
+  }
+  return _redisAvailable;
+}
+
+export function getRedis(): Redis {
+  if (!isRedisAvailable()) {
+    throw new Error('Redis is not available: REDIS_URL is not configured');
+  }
+  if (_client) return _client;
+  const url = process.env.REDIS_URL!;
+  _client = new Redis(url, getOptions());
   return _client;
 }
 
