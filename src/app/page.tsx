@@ -29,6 +29,12 @@ export default function HomePage() {
             >
               登录
             </Link>
+            <Link
+              href="/courses"
+              className="border border-white/40 text-white font-semibold px-6 py-3 rounded-lg hover:bg-white/10 transition"
+            >
+              课程中心
+            </Link>
           </div>
         </div>
       </section>

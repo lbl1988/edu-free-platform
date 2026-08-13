@@ -120,8 +120,10 @@ model User {
   // 内容域关系
   coursesAsTeacher     Course[]
   courseEnrollments    CourseEnrollment[]
+  notes                Note[]
   examResults          ExamResult[]
   refreshTokens        RefreshToken[]
+  uploadedMaterials    Material[]
 
   @@index([role])
   @@index([grade])
@@ -228,14 +230,145 @@ model Course {
   status      CourseStatus @default(DRAFT)
   intro       String?
   coverUrl    String?
+  // 教材版本（人教/北师大/苏教等），课堂学科板块必填，课外/竞赛可为空
+  textbookId  String?
+  textbook    Textbook?    @relation(fields: [textbookId], references: [id])
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
   enrollments CourseEnrollment[]
+  lessons     Lesson[]
+  materials   Material[]
 
   @@index([grade, subjectId])
   @@index([boardType, status])
   @@index([teacherId])
+  @@index([textbookId])
+}
+
+/// 教材版本：按"年级—学科—教材版本"组织目录
+model Textbook {
+  id        String   @id @default(cuid())
+  name      String   // 人教版 / 北师大版 / 苏教版
+  subjectId Int
+  subject   Subject  @relation(fields: [subjectId], references: [id])
+  grade     Int
+  publisher String?  // 出版社
+  createdAt DateTime @default(now())
+
+  courses   Course[]
+  chapters  Chapter[]
+
+  @@unique([subjectId, grade, name])
+  @@index([grade, subjectId])
+}
+
+/// 章节：五级目录中的"章节"层，支持树形结构
+model Chapter {
+  id          String     @id @default(cuid())
+  textbookId  String
+  textbook    Textbook   @relation(fields: [textbookId], references: [id], onDelete: Cascade)
+  parentId    String?    // 父章节，null 为根章节
+  parent      Chapter?   @relation("ChapterTree", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children    Chapter[]  @relation("ChapterTree")
+  title       String
+  sortOrder   Int        @default(0)
+  createdAt   DateTime   @default(now())
+
+  knowledgePoints KnowledgePoint[]
+  lessons         Lesson[]
+
+  @@index([textbookId, parentId])
+  @@index([sortOrder])
+}
+
+/// 知识点：五级目录最底层，关联章节与题目
+model KnowledgePoint {
+  id        String   @id @default(cuid())
+  chapterId String
+  chapter   Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  title     String
+  // 知识点描述，供 AI 生成题目与摘要参考
+  description String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([chapterId])
+}
+
+/// 课时：课程下的具体教学单元，关联章节与视频
+model Lesson {
+  id          String   @id @default(cuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  chapterId   String?
+  chapter     Chapter? @relation(fields: [chapterId], references: [id])
+  title       String
+  intro       String?
+  sortOrder   Int      @default(0)
+  durationSec Int?     // 视频时长（秒），由转码回填
+  video       Video?
+  notes       Note[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([courseId, sortOrder])
+  @@index([chapterId])
+}
+
+/// 视频：课时关联的视频资源，存储于 MinIO
+model Video {
+  id           String   @id @default(cuid())
+  lessonId     String   @unique
+  lesson       Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  // MinIO 对象 key（非完整 URL，由 CDN/签名拼接）
+  objectKey    String
+  // 转码后的多清晰度 HLS 清单 key
+  hlsKey       String?
+  durationSec  Int?
+  fileSize     Int?
+  // 字幕（Whisper 生成，第二期 AI 引擎回填）
+  subtitleUrl  String?
+  // 转码状态
+  transcodeStatus String @default("PENDING") // PENDING | PROCESSING | READY | FAILED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([transcodeStatus])
+}
+
+/// 课件资料：课程级附件（PDF/Word/PPT），存储于 MinIO
+model Material {
+  id          String   @id @default(cuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  // MinIO 对象 key
+  objectKey   String
+  fileType    String   // pdf | docx | pptx | zip
+  fileSize    Int?
+  uploaderId  String
+  uploader    User     @relation(fields: [uploaderId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([courseId])
+}
+
+/// 课堂笔记：学生在课时下的个人笔记
+model Note {
+  id        String   @id @default(cuid())
+  lessonId  String
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  studentId String
+  student   User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  content   String
+  // 视频时间戳锚点（秒），可空
+  anchorSec Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([lessonId, studentId])
+  @@index([studentId])
 }
 
 model CourseEnrollment {

@@ -5,6 +5,7 @@ import { verifyAccessToken } from '@/lib/auth';
 const PROTECTED = [
   '/api/v1/user',
   '/api/v1/courses',
+  '/api/v1/lessons',
   '/api/v1/exams',
   '/api/v1/ai-gen',
   '/api/v1/me',
