@@ -13,7 +13,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:seed:core": "tsx prisma/seed-core-content.ts"
   },
   "dependencies": {
     "@ant-design/nextjs-registry": "^1.0.0",
