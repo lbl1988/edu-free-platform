@@ -542,7 +542,8 @@ async function createChaptersAndCourses(
   return { chapterCount: chapters.length, lessonTotal };
 }
 
-async function main() {
+// 导出主函数，供 CLI 和 API 端点共用
+export async function main() {
   console.log('🚀 开始填充核心板块种子数据（2024新版权威目录）...\n');
 
   // 1. 学科
