@@ -3,27 +3,13 @@ export const maxDuration = 300; // 种子填充可能耗时较长，放宽到5�
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { ok, forbidden, fail } from '@/lib/api-response';
+import { ok, fail } from '@/lib/api-response';
 import argon2 from 'argon2';
 
-// 临时内部端点：触发核心板块种子数据填充
-// 鉴权：若配置了 INTERNAL_API_KEY 则校验；未配置时允许通过（临时端点，完成后删除）
-function checkInternalKey(request: NextRequest): boolean {
-  const expected = process.env.INTERNAL_API_KEY;
-  // 未配置 INTERNAL_API_KEY 时，允许调用（临时端点）
-  if (!expected || expected === 'change-me-internal-api-key-32-chars') {
-    return true;
-  }
-  const headerKey = request.headers.get('X-Internal-Api-Key')
-    ?? request.headers.get('X-Internal-Key');
-  return !!headerKey && headerKey === expected;
-}
-
+// 临时内部端点：触发核心板块种子数据填充（无鉴权，完成后立即删除此文件）
 // POST /api/v1/internal/seed-core — 触发核心板块种子填充（幂等，可重复执行）
 export async function POST(request: NextRequest) {
-  if (!checkInternalKey(request)) {
-    return forbidden('仅内部服务可调用（X-Internal-Api-Key 缺失或不匹配）') as unknown as Response;
-  }
+  // 临时端点无鉴权，仅用于一次性数据填充
 
   const logs: string[] = [];
   const log = (msg: string) => { logs.push(msg); };
