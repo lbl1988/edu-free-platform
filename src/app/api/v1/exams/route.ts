@@ -4,13 +4,14 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireLogin, requireTeacher } from '@/lib/guards';
+import { getCurrentUser } from '@/lib/auth-context';
 import { ok, okPaginated, badRequest, notFound, forbidden } from '@/lib/api-response';
 import { ExamType, CourseStatus, Role } from '@prisma/client';
 
 // GET /api/v1/exams — 考试列表
+// 匿名/学生：仅看已发布考试；教师：自己创建的全部 + 他人已发布；管理员：全部
 export async function GET(request: NextRequest) {
-  const [user, err] = await requireLogin(request);
-  if (err) return err;
+  const maybeUser = await getCurrentUser(request);
 
   const { searchParams } = new URL(request.url);
   const page = Math.max(1, Number(searchParams.get('page') ?? 1));
@@ -24,17 +25,14 @@ export async function GET(request: NextRequest) {
   if (grade) where.grade = Number(grade);
   if (examType) where.examType = examType;
 
-  if (user!.role === Role.STUDENT) {
-    // 学生：仅看已发布考试
+  if (!maybeUser || maybeUser.role === Role.STUDENT) {
+    // 匿名用户和学生：仅看已发布考试
     where.status = CourseStatus.PUBLISHED;
-    // 允许同年级或未指定年级的考试（已用 where.grade 过滤了不同年级）
-    // 学生端不限制自己的考试结果展示，列表展示 + 自己的状态
-  } else {
-    // 教师：自己创建的全部 + 他人已发布；管理员：全部
-    if (user!.role === Role.TEACHER) {
-      where.OR = [{ status: CourseStatus.PUBLISHED }, { creatorId: user!.id }];
-    }
+  } else if (maybeUser.role === Role.TEACHER) {
+    // 教师：自己创建的全部 + 他人已发布
+    where.OR = [{ status: CourseStatus.PUBLISHED }, { creatorId: maybeUser.id }];
   }
+  // ADMIN 看全部，不追加过滤
 
   const [total, rawItems] = await Promise.all([
     prisma.exam.count({ where }),
@@ -51,12 +49,12 @@ export async function GET(request: NextRequest) {
     }),
   ]);
 
-  // 学生端：附带自己的 result 状态
+  // 已登录学生：附带自己的 result 状态
   let items = rawItems as any[];
-  if (user!.role === Role.STUDENT && rawItems.length > 0) {
+  if (maybeUser && maybeUser.role === Role.STUDENT && rawItems.length > 0) {
     const examIds = rawItems.map((e) => e.id);
     const myResults = await prisma.examResult.findMany({
-      where: { examId: { in: examIds }, studentId: user!.id },
+      where: { examId: { in: examIds }, studentId: maybeUser.id },
       select: {
         id: true, examId: true, status: true, submitTime: true,
         score: true, cheatingCount: true, graded: true,
@@ -64,6 +62,9 @@ export async function GET(request: NextRequest) {
     });
     const map = new Map(myResults.map((r) => [r.examId, r]));
     items = rawItems.map((e) => ({ ...e, myResult: map.get(e.id) ?? null }));
+  } else {
+    // 匿名/教师/管理员：统一 myResult 为 null
+    items = rawItems.map((e) => ({ ...e, myResult: null }));
   }
 
   return okPaginated({ exams: items }, { page, limit, total });

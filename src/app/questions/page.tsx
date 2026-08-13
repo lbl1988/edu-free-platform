@@ -95,11 +95,49 @@ export default function QuestionsPage() {
         />
         <Select placeholder="学科" value={filters.subjectId || undefined}
           onChange={(v) => setFilters({ ...filters, subjectId: v ?? '' })} allowClear
-          style={{ width: 110 }}
+          style={{ width: 140 }}
           options={[
-            { label: '语文', value: '1' }, { label: '数学', value: '2' }, { label: '英语', value: '3' },
-            { label: '物理', value: '4' }, { label: '化学', value: '5' }, { label: '生物', value: '6' },
-            { label: '历史', value: '7' }, { label: '地理', value: '8' }, { label: '政治', value: '9' },
+            {
+              label: '小学',
+              title: '小学 1-6 年级',
+              options: [
+                { label: '语文', value: '101' },
+                { label: '数学', value: '102' },
+                { label: '英语', value: '103' },
+                { label: '科学', value: '104' },
+                { label: '道德与法治', value: '105' },
+              ],
+            },
+            {
+              label: '初中',
+              title: '初中 7-9 年级',
+              options: [
+                { label: '语文', value: '1' },
+                { label: '数学', value: '2' },
+                { label: '英语', value: '3' },
+                { label: '物理', value: '4' },
+                { label: '化学', value: '5' },
+                { label: '生物', value: '6' },
+                { label: '历史', value: '7' },
+                { label: '地理', value: '8' },
+                { label: '政治', value: '9' },
+              ],
+            },
+            {
+              label: '高中',
+              title: '高中 10-12 年级',
+              options: [
+                { label: '语文', value: '201' },
+                { label: '数学', value: '202' },
+                { label: '英语', value: '203' },
+                { label: '物理', value: '204' },
+                { label: '化学', value: '205' },
+                { label: '生物', value: '206' },
+                { label: '历史', value: '207' },
+                { label: '地理', value: '208' },
+                { label: '政治', value: '209' },
+              ],
+            },
           ]} />
         <Select placeholder="年级" value={filters.grade || undefined}
           onChange={(v) => setFilters({ ...filters, grade: v ?? '' })} allowClear

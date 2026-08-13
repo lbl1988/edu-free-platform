@@ -63,42 +63,174 @@ async function enrichItem(item: {
   return { ...item, resource };
 }
 
+// 根据年级范围生成过滤条件：优先同年级，然后扩展到 ±1 年级
+function gradeRangeFilter(grade: number | null | undefined): { grade?: number } | { grade?: { in: number[] } } | {} {
+  if (grade == null) return {};
+  const g = Math.max(1, Math.min(12, Number(grade)));
+  const grades = [g - 1, g, g + 1].filter((x) => x >= 1 && x <= 12);
+  return { grade: { in: grades } };
+}
+
 // Fallback：当 RecallItem 表为空时，返回热门内容作为推荐
-async function fallbackHotContent(studentId: string, scene: Scene, limit: number) {
+// 若学生有 grade 信息，则按年级个性化推荐（同年级优先 → 相邻年级补充 → 全量兜底）
+async function fallbackHotContent(
+  studentId: string,
+  scene: Scene,
+  limit: number,
+  studentGrade: number | null | undefined,
+) {
   const fallback: Array<{
     itemType: string; itemId: string; score: number; source: string;
   }> = [];
 
-  const [hotCourses, hotArticles, hotQuestions] = await Promise.all([
-    prisma.course.findMany({
-      where: { status: CourseStatus.PUBLISHED },
-      orderBy: { createdAt: 'desc' },
-      take: Math.ceil(limit / 2),
-      select: { id: true },
-    }),
-    prisma.article.findMany({
-      where: { reviewStatus: ReviewStatus.REVIEWER_PASSED, publishedAt: { not: null } },
-      orderBy: { viewCount: 'desc' },
-      take: Math.ceil(limit / 3),
-      select: { id: true },
-    }),
-    prisma.question.findMany({
-      where: { reviewStatus: ReviewStatus.REVIEWER_PASSED },
-      orderBy: { attemptCount: 'desc' },
-      take: Math.ceil(limit / 4),
-      select: { id: true },
-    }),
-  ]);
+  const gradeFilter = gradeRangeFilter(studentGrade);
+  const exactGradeFilter = studentGrade != null ? { grade: Number(studentGrade) } : {};
+  const courseTarget = Math.ceil(limit / 2);
+  const articleTarget = Math.ceil(limit / 3);
+  const questionTarget = Math.ceil(limit / 4);
 
-  hotCourses.forEach((c, idx) => {
-    fallback.push({ itemType: 'course', itemId: c.id, score: 1.0 / (idx + 1), source: 'hot_fallback' });
+  type IdRow = { id: string };
+  let courses: IdRow[] = [];
+  let articles: IdRow[] = [];
+  let questions: IdRow[] = [];
+
+  // 阶段一：同年级精确匹配（仅当学生有年级信息时）
+  if (studentGrade != null) {
+    const [exactCourses, exactArticles, exactQuestions] = await Promise.all([
+      prisma.course.findMany({
+        where: { status: CourseStatus.PUBLISHED, ...exactGradeFilter },
+        orderBy: { createdAt: 'desc' },
+        take: courseTarget,
+        select: { id: true },
+      }),
+      prisma.article.findMany({
+        where: {
+          reviewStatus: ReviewStatus.REVIEWER_PASSED,
+          publishedAt: { not: null },
+          ...exactGradeFilter,
+        },
+        orderBy: { viewCount: 'desc' },
+        take: articleTarget,
+        select: { id: true },
+      }),
+      prisma.question.findMany({
+        where: { reviewStatus: ReviewStatus.REVIEWER_PASSED, ...exactGradeFilter },
+        orderBy: { attemptCount: 'desc' },
+        take: questionTarget,
+        select: { id: true },
+      }),
+    ]);
+    courses = exactCourses;
+    articles = exactArticles;
+    questions = exactQuestions;
+  }
+
+  // 阶段二：同年级 ±1 范围补充
+  const needCourses2 = courseTarget - courses.length;
+  const needArticles2 = articleTarget - articles.length;
+  const needQuestions2 = questionTarget - questions.length;
+  const excludeIds = (rows: IdRow[]) => rows.map((r) => r.id);
+  if (needCourses2 > 0 || needArticles2 > 0 || needQuestions2 > 0) {
+    const [rangeCourses, rangeArticles, rangeQuestions] = await Promise.all([
+      needCourses2 > 0
+        ? prisma.course.findMany({
+            where: {
+              status: CourseStatus.PUBLISHED,
+              ...(studentGrade != null ? gradeFilter : {}),
+              id: { notIn: excludeIds(courses) },
+            },
+            orderBy: { createdAt: 'desc' },
+            take: needCourses2,
+            select: { id: true },
+          })
+        : Promise.resolve<IdRow[]>([]),
+      needArticles2 > 0
+        ? prisma.article.findMany({
+            where: {
+              reviewStatus: ReviewStatus.REVIEWER_PASSED,
+              publishedAt: { not: null },
+              ...(studentGrade != null ? gradeFilter : {}),
+              id: { notIn: excludeIds(articles) },
+            },
+            orderBy: { viewCount: 'desc' },
+            take: needArticles2,
+            select: { id: true },
+          })
+        : Promise.resolve<IdRow[]>([]),
+      needQuestions2 > 0
+        ? prisma.question.findMany({
+            where: {
+              reviewStatus: ReviewStatus.REVIEWER_PASSED,
+              ...(studentGrade != null ? gradeFilter : {}),
+              id: { notIn: excludeIds(questions) },
+            },
+            orderBy: { attemptCount: 'desc' },
+            take: needQuestions2,
+            select: { id: true },
+          })
+        : Promise.resolve<IdRow[]>([]),
+    ]);
+    courses = [...courses, ...rangeCourses];
+    articles = [...articles, ...rangeArticles];
+    questions = [...questions, ...rangeQuestions];
+  }
+
+  // 阶段三：全量兜底（不限年级，扣除前两阶段结果）
+  const needCourses3 = courseTarget - courses.length;
+  const needArticles3 = articleTarget - articles.length;
+  const needQuestions3 = questionTarget - questions.length;
+  if (needCourses3 > 0 || needArticles3 > 0 || needQuestions3 > 0) {
+    const [allCourses, allArticles, allQuestions] = await Promise.all([
+      needCourses3 > 0
+        ? prisma.course.findMany({
+            where: {
+              status: CourseStatus.PUBLISHED,
+              id: { notIn: excludeIds(courses) },
+            },
+            orderBy: { createdAt: 'desc' },
+            take: needCourses3,
+            select: { id: true },
+          })
+        : Promise.resolve<IdRow[]>([]),
+      needArticles3 > 0
+        ? prisma.article.findMany({
+            where: {
+              reviewStatus: ReviewStatus.REVIEWER_PASSED,
+              publishedAt: { not: null },
+              id: { notIn: excludeIds(articles) },
+            },
+            orderBy: { viewCount: 'desc' },
+            take: needArticles3,
+            select: { id: true },
+          })
+        : Promise.resolve<IdRow[]>([]),
+      needQuestions3 > 0
+        ? prisma.question.findMany({
+            where: {
+              reviewStatus: ReviewStatus.REVIEWER_PASSED,
+              id: { notIn: excludeIds(questions) },
+            },
+            orderBy: { attemptCount: 'desc' },
+            take: needQuestions3,
+            select: { id: true },
+          })
+        : Promise.resolve<IdRow[]>([]),
+    ]);
+    courses = [...courses, ...allCourses];
+    articles = [...articles, ...allArticles];
+    questions = [...questions, ...allQuestions];
+  }
+
+  const source = studentGrade != null ? 'grade_fallback' : 'hot_fallback';
+  courses.forEach((c, idx) => {
+    fallback.push({ itemType: 'course', itemId: c.id, score: 1.0 / (idx + 1), source });
   });
-  hotArticles.forEach((a, idx) => {
-    fallback.push({ itemType: 'article', itemId: a.id, score: 0.7 / (idx + 1), source: 'hot_fallback' });
+  articles.forEach((a, idx) => {
+    fallback.push({ itemType: 'article', itemId: a.id, score: 0.7 / (idx + 1), source });
   });
   if (scene === 'after_exam' || scene === 'dashboard') {
-    hotQuestions.forEach((q, idx) => {
-      fallback.push({ itemType: 'question', itemId: q.id, score: 0.5 / (idx + 1), source: 'hot_fallback' });
+    questions.forEach((q, idx) => {
+      fallback.push({ itemType: 'question', itemId: q.id, score: 0.5 / (idx + 1), source });
     });
   }
 
@@ -132,12 +264,17 @@ export async function GET(request: NextRequest) {
     take: limit,
   });
 
-  // Fallback：无推荐数据时返回热门内容
+  // Fallback：无推荐数据时返回热门内容（根据学生年级个性化推荐）
   if (items.length === 0) {
-    items = await fallbackHotContent(user!.id, scene, limit);
+    items = await fallbackHotContent(user!.id, scene, limit, user!.grade);
   }
 
   const enriched = await Promise.all(items.map(enrichItem));
 
-  return ok({ items: enriched, fallback: items[0]?.source === 'hot_fallback' });
+  const fallbackSrc = items[0]?.source;
+  return ok({
+    items: enriched,
+    fallback: fallbackSrc === 'hot_fallback' || fallbackSrc === 'grade_fallback',
+    gradeMatched: fallbackSrc === 'grade_fallback',
+  });
 }

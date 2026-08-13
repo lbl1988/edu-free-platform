@@ -56,19 +56,22 @@ export default function HomePage() {
         <h2 className="text-2xl font-bold mb-8 text-center">五大学习板块</h2>
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[
-            { t: '课堂学科', d: '年级—学科—教材版本—章节—知识点五级目录，视频课程配套课件与练习', tag: 'P0' },
-            { t: '课外知识', d: '科学探索、人文历史、艺术启蒙等多元拓展，知识图谱式关联推荐', tag: 'P1' },
-            { t: '全国竞赛', d: '五大学科奥赛与白名单赛事，含在线判题系统（OJ沙箱）', tag: 'P1' },
-            { t: '真题刷题', d: '全国各省市中高考真题，AI自动采集入库，智能组卷与错题本', tag: 'P0' },
-            { t: '在线考试', d: '正式考试与模拟考试，防作弊、自动阅卷、AI辅助评分', tag: 'P0·新增' },
+            { t: '课堂学科', d: '年级—学科—教材版本—章节—知识点五级目录，视频课程配套课件与练习', tag: 'P0', href: '/courses' },
+            { t: '课外知识', d: '科学探索、人文历史、艺术启蒙等多元拓展，知识图谱式关联推荐', tag: 'P1', href: '/articles' },
+            { t: '全国竞赛', d: '五大学科奥赛与白名单赛事，含在线判题系统（OJ沙箱）', tag: 'P1', href: '/contests' },
+            { t: '真题刷题', d: '全国各省市中高考真题，AI自动采集入库，智能组卷与错题本', tag: 'P0', href: '/questions' },
+            { t: '在线考试', d: '正式考试与模拟考试，防作弊、自动阅卷、AI辅助评分', tag: 'P0·新增', href: '/exams' },
           ].map((m) => (
-            <div key={m.t} className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold">{m.t}</h3>
-                <span className="text-xs px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">{m.tag}</span>
+            <Link key={m.t} href={m.href} className="block">
+              <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition h-full cursor-pointer">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-lg font-semibold">{m.t}</h3>
+                  <span className="text-xs px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">{m.tag}</span>
+                </div>
+                <p className="text-sm text-gray-600 leading-relaxed">{m.d}</p>
+                <div className="mt-4 text-sm text-emerald-600 font-medium">进入板块 →</div>
               </div>
-              <p className="text-sm text-gray-600 leading-relaxed">{m.d}</p>
-            </div>
+            </Link>
           ))}
         </div>
       </section>

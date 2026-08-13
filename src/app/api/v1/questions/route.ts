@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireLogin, requireTeacher } from '@/lib/guards';
+import { getCurrentUser } from '@/lib/auth-context';
 import { ok, okPaginated, badRequest, notFound } from '@/lib/api-response';
 import { QuestionType, ReviewStatus } from '@prisma/client';
 
@@ -14,9 +15,9 @@ const QUESTION_INCLUDE = {
 } as const;
 
 // GET /api/v1/questions — 题目列表（分页+多维度筛选）
+// 匿名/学生：仅看 AI 通过的公开题；教师/管理员：按筛选条件
 export async function GET(request: NextRequest) {
-  const [user, err] = await requireLogin(request);
-  if (err) return err;
+  const maybeUser = await getCurrentUser(request);
 
   const { searchParams } = new URL(request.url);
   const page = Math.max(1, Number(searchParams.get('page') ?? 1));
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
   const questionType = searchParams.get('questionType') as QuestionType | null;
   const source = searchParams.get('source');
   const keyword = searchParams.get('keyword')?.trim();
-  // 学生仅看已审核；教师/管理员看全部
+  // 教师/管理员可指定 reviewStatus；匿名/学生强制 AI_PASSED
   const reviewStatus = searchParams.get('reviewStatus') as ReviewStatus | null;
 
   const where: Record<string, unknown> = {};
@@ -40,8 +41,9 @@ export async function GET(request: NextRequest) {
   if (source) where.source = source;
   if (keyword) where.content = { contains: keyword, mode: 'insensitive' };
 
-  if (user!.role === 'STUDENT') {
-    where.reviewStatus = ReviewStatus.AI_PASSED; // 学生看 AI 通过的（含管理员/专家通过更好，后续按需扩展）
+  if (!maybeUser || maybeUser.role === 'STUDENT') {
+    // 匿名和学生看 AI 通过的（题库公开层）
+    where.reviewStatus = ReviewStatus.AI_PASSED;
   } else if (reviewStatus) {
     where.reviewStatus = reviewStatus;
   }

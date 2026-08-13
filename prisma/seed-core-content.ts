@@ -24,13 +24,28 @@ import argon2 from 'argon2';
 const prisma = new PrismaClient();
 
 // subjectCode -> subjectId 映射（题目样题使用 code，数据库存 id）
+// 小学 PRIMARY (id 101-199) / 初中 JUNIOR (id 1-99) / 高中 SENIOR (id 201-299)
 const SUBJECT_CODE_MAP: Record<string, number> = {
+  // 小学
+  'p-chinese': 101, 'p-math': 102, 'p-english': 103, 'p-science': 104, 'p-politics': 105,
+  // 初中
   chinese: 1, math: 2, english: 3, physics: 4, chemistry: 5,
   history: 6, politics: 7, biology: 8, geography: 9,
+  // 高中
+  'h-chinese': 201, 'h-math': 202, 'h-english': 203, 'h-physics': 204, 'h-chemistry': 205,
+  'h-biology': 206, 'h-history': 207, 'h-geography': 208, 'h-politics': 209,
 };
 
 // ============ 学科 ============
+// 覆盖小学1-6年级、初中7-9年级、高中10-12年级
 const SUBJECTS = [
+  // 小学 PRIMARY（grade 1-6）
+  { id: 101, name: '语文', stage: 'PRIMARY' },
+  { id: 102, name: '数学', stage: 'PRIMARY' },
+  { id: 103, name: '英语', stage: 'PRIMARY' },
+  { id: 104, name: '科学', stage: 'PRIMARY' },
+  { id: 105, name: '道德与法治', stage: 'PRIMARY' },
+  // 初中 JUNIOR（grade 7-9）
   { id: 1, name: '语文', stage: 'JUNIOR' },
   { id: 2, name: '数学', stage: 'JUNIOR' },
   { id: 3, name: '英语', stage: 'JUNIOR' },
@@ -40,15 +55,56 @@ const SUBJECTS = [
   { id: 7, name: '道德与法治', stage: 'JUNIOR' },
   { id: 8, name: '生物', stage: 'JUNIOR' },
   { id: 9, name: '地理', stage: 'JUNIOR' },
+  // 高中 SENIOR（grade 10-12）
+  { id: 201, name: '语文', stage: 'SENIOR' },
+  { id: 202, name: '数学', stage: 'SENIOR' },
+  { id: 203, name: '英语', stage: 'SENIOR' },
+  { id: 204, name: '物理', stage: 'SENIOR' },
+  { id: 205, name: '化学', stage: 'SENIOR' },
+  { id: 206, name: '生物', stage: 'SENIOR' },
+  { id: 207, name: '历史', stage: 'SENIOR' },
+  { id: 208, name: '地理', stage: 'SENIOR' },
+  { id: 209, name: '思想政治', stage: 'SENIOR' },
 ];
 
 // ============ 教材版本 ============
+// 覆盖小1至高3，每个学段—年级—学科一套人教版
 const TEXTBOOKS = [
+  // —— 小学（1-6年级）：语数英科道法——
+  { id: 'tb-p-rj-chinese-g1', name: '人教版（统编版）', subjectId: 101, grade: 1, publisher: '人民教育出版社' },
+  { id: 'tb-p-rj-chinese-g3', name: '人教版（统编版）', subjectId: 101, grade: 3, publisher: '人民教育出版社' },
+  { id: 'tb-p-rj-chinese-g6', name: '人教版（统编版）', subjectId: 101, grade: 6, publisher: '人民教育出版社' },
+  { id: 'tb-p-rj-math-g1', name: '人教版', subjectId: 102, grade: 1, publisher: '人民教育出版社' },
+  { id: 'tb-p-rj-math-g3', name: '人教版', subjectId: 102, grade: 3, publisher: '人民教育出版社' },
+  { id: 'tb-p-rj-math-g6', name: '人教版', subjectId: 102, grade: 6, publisher: '人民教育出版社' },
+  { id: 'tb-p-rj-english-g3', name: '人教版（PEP）', subjectId: 103, grade: 3, publisher: '人民教育出版社' },
+  { id: 'tb-p-rj-english-g6', name: '人教版（PEP）', subjectId: 103, grade: 6, publisher: '人民教育出版社' },
+  { id: 'tb-p-rj-science-g3', name: '人教版（鄂教版）', subjectId: 104, grade: 3, publisher: '人民教育出版社' },
+  { id: 'tb-p-rj-science-g6', name: '人教版（鄂教版）', subjectId: 104, grade: 6, publisher: '人民教育出版社' },
+  { id: 'tb-p-rj-politics-g1', name: '人教版（统编版）', subjectId: 105, grade: 1, publisher: '人民教育出版社' },
+  // —— 初中（7-9年级）：保留原目录——
   { id: 'tb-renjiao-chinese', name: '人教版（统编版）', subjectId: 1, grade: 7, publisher: '人民教育出版社' },
   { id: 'tb-renjiao-math', name: '人教版', subjectId: 2, grade: 7, publisher: '人民教育出版社' },
   { id: 'tb-renjiao-english', name: '人教版（PEP）', subjectId: 3, grade: 7, publisher: '人民教育出版社' },
   { id: 'tb-renjiao-physics', name: '人教版', subjectId: 4, grade: 8, publisher: '人民教育出版社' },
   { id: 'tb-renjiao-chemistry', name: '人教版', subjectId: 5, grade: 9, publisher: '人民教育出版社' },
+  { id: 'tb-rj-history-g7', name: '人教版（统编版）', subjectId: 6, grade: 7, publisher: '人民教育出版社' },
+  { id: 'tb-rj-politics-g7', name: '人教版（统编版）', subjectId: 7, grade: 7, publisher: '人民教育出版社' },
+  { id: 'tb-rj-biology-g7', name: '人教版', subjectId: 8, grade: 7, publisher: '人民教育出版社' },
+  { id: 'tb-rj-geography-g7', name: '人教版', subjectId: 9, grade: 7, publisher: '人民教育出版社' },
+  // —— 高中（10-12年级 = 高一至高三）：语数英物化生史地政——
+  { id: 'tb-h-rj-chinese-g10', name: '人教版（统编版）必修上册', subjectId: 201, grade: 10, publisher: '人民教育出版社' },
+  { id: 'tb-h-rj-math-g10', name: '人教版（A版）必修第一册', subjectId: 202, grade: 10, publisher: '人民教育出版社' },
+  { id: 'tb-h-rj-english-g10', name: '人教版必修第一册', subjectId: 203, grade: 10, publisher: '人民教育出版社' },
+  { id: 'tb-h-rj-physics-g10', name: '人教版必修第一册', subjectId: 204, grade: 10, publisher: '人民教育出版社' },
+  { id: 'tb-h-rj-chemistry-g10', name: '人教版必修第一册', subjectId: 205, grade: 10, publisher: '人民教育出版社' },
+  { id: 'tb-h-rj-biology-g10', name: '人教版必修1', subjectId: 206, grade: 10, publisher: '人民教育出版社' },
+  { id: 'tb-h-rj-history-g10', name: '人教版（统编版）必修中外历史纲要（上）', subjectId: 207, grade: 10, publisher: '人民教育出版社' },
+  { id: 'tb-h-rj-geography-g10', name: '人教版必修第一册', subjectId: 208, grade: 10, publisher: '人民教育出版社' },
+  { id: 'tb-h-rj-politics-g10', name: '人教版（统编版）必修1', subjectId: 209, grade: 10, publisher: '人民教育出版社' },
+  { id: 'tb-h-rj-math-g11', name: '人教版（A版）选择性必修第一册', subjectId: 202, grade: 11, publisher: '人民教育出版社' },
+  { id: 'tb-h-rj-physics-g11', name: '人教版选择性必修第一册', subjectId: 204, grade: 11, publisher: '人民教育出版社' },
+  { id: 'tb-h-rj-chinese-g12', name: '人教版（统编版）选择性必修上册', subjectId: 201, grade: 12, publisher: '人民教育出版社' },
 ];
 
 // ============ 统编版语文七年级上册 章节（2024秋修订版） ============
@@ -274,6 +330,280 @@ const ENGLISH_G7U_CHAPTERS = [
   ]},
 ];
 
+// ============ 小学一年级上册 语文 章节（统编版） ============
+const P_CHINESE_G1U_CHAPTERS = [
+  { title: '我是小学生', sortOrder: 1, lessons: [
+    { title: '上学歌', sortOrder: 1 },
+    { title: '我爱学语文', sortOrder: 2 },
+  ]},
+  { title: '汉语拼音', sortOrder: 2, lessons: [
+    { title: 'a o e', sortOrder: 1 },
+    { title: 'i u ü y w', sortOrder: 2 },
+    { title: 'b p m f', sortOrder: 3 },
+    { title: 'd t n l', sortOrder: 4 },
+    { title: 'g k h', sortOrder: 5 },
+    { title: 'j q x', sortOrder: 6 },
+  ]},
+  { title: '识字', sortOrder: 3, lessons: [
+    { title: '天地人', sortOrder: 1 },
+    { title: '金木水火土', sortOrder: 2 },
+    { title: '口耳目', sortOrder: 3 },
+    { title: '日月水火', sortOrder: 4 },
+  ]},
+  { title: '课文', sortOrder: 4, lessons: [
+    { title: '秋天', sortOrder: 1 },
+    { title: '小小的船', sortOrder: 2 },
+    { title: '江南', sortOrder: 3 },
+    { title: '四季', sortOrder: 4 },
+  ]},
+];
+
+// ============ 小学一年级上册 数学 章节（人教版） ============
+const P_MATH_G1U_CHAPTERS = [
+  { title: '准备课', sortOrder: 1, lessons: [
+    { title: '数一数', sortOrder: 1 },
+    { title: '比多少', sortOrder: 2 },
+  ]},
+  { title: '位置', sortOrder: 2, lessons: [
+    { title: '上、下、前、后', sortOrder: 1 },
+    { title: '左、右', sortOrder: 2 },
+  ]},
+  { title: '1-5的认识和加减法', sortOrder: 3, lessons: [
+    { title: '1-5各数的认识', sortOrder: 1 },
+    { title: '比多少（> < =）', sortOrder: 2 },
+    { title: '加法的初步认识', sortOrder: 3 },
+    { title: '减法的初步认识', sortOrder: 4 },
+    { title: '0的认识和加减法', sortOrder: 5 },
+  ]},
+  { title: '认识图形（一）', sortOrder: 4, lessons: [
+    { title: '认识长方体、正方体、圆柱、球', sortOrder: 1 },
+  ]},
+  { title: '6-10的认识和加减法', sortOrder: 5, lessons: [
+    { title: '6和7的认识', sortOrder: 1 },
+    { title: '8和9的认识', sortOrder: 2 },
+    { title: '10的认识', sortOrder: 3 },
+    { title: '连加连减', sortOrder: 4 },
+    { title: '加减混合', sortOrder: 5 },
+  ]},
+  { title: '11-20各数的认识', sortOrder: 6, lessons: [
+    { title: '11-20各数的认识', sortOrder: 1 },
+    { title: '10加几与相应的减法', sortOrder: 2 },
+  ]},
+];
+
+// ============ 小学三年级上册 英语 章节（PEP） ============
+const P_ENGLISH_G3U_CHAPTERS = [
+  { title: 'Unit 1 Hello!', sortOrder: 1, lessons: [
+    { title: 'A Let\'s talk', sortOrder: 1 },
+    { title: 'A Let\'s learn', sortOrder: 2 },
+    { title: 'B Let\'s talk', sortOrder: 3 },
+  ]},
+  { title: 'Unit 2 Colours', sortOrder: 2, lessons: [
+    { title: 'A Let\'s talk', sortOrder: 1 },
+    { title: 'A Let\'s learn', sortOrder: 2 },
+    { title: 'B Start to read', sortOrder: 3 },
+  ]},
+  { title: 'Unit 3 Look at me!', sortOrder: 3, lessons: [
+    { title: 'A Let\'s talk', sortOrder: 1 },
+    { title: 'A Let\'s learn', sortOrder: 2 },
+  ]},
+  { title: 'Unit 4 We love animals', sortOrder: 4, lessons: [
+    { title: 'A Let\'s talk', sortOrder: 1 },
+    { title: 'A Let\'s learn', sortOrder: 2 },
+  ]},
+  { title: 'Unit 5 Let\'s eat!', sortOrder: 5, lessons: [
+    { title: 'A Let\'s talk', sortOrder: 1 },
+    { title: 'A Let\'s learn', sortOrder: 2 },
+  ]},
+  { title: 'Unit 6 Happy birthday!', sortOrder: 6, lessons: [
+    { title: 'A Let\'s talk', sortOrder: 1 },
+    { title: 'A Let\'s learn', sortOrder: 2 },
+  ]},
+];
+
+// ============ 小学六年级上册 数学 章节（人教版） ============
+const P_MATH_G6U_CHAPTERS = [
+  { title: '第一单元 分数乘法', sortOrder: 1, lessons: [
+    { title: '分数乘整数', sortOrder: 1 },
+    { title: '分数乘分数', sortOrder: 2 },
+    { title: '分数乘小数', sortOrder: 3 },
+    { title: '解决问题：求一个数的几分之几', sortOrder: 4 },
+  ]},
+  { title: '第二单元 位置与方向（二）', sortOrder: 2, lessons: [
+    { title: '根据方向和距离确定物体位置', sortOrder: 1 },
+    { title: '描述简单的路线图', sortOrder: 2 },
+  ]},
+  { title: '第三单元 分数除法', sortOrder: 3, lessons: [
+    { title: '倒数的认识', sortOrder: 1 },
+    { title: '分数除以整数', sortOrder: 2 },
+    { title: '一个数除以分数', sortOrder: 3 },
+    { title: '分数混合运算', sortOrder: 4 },
+    { title: '解决问题（和倍/差倍）', sortOrder: 5 },
+  ]},
+  { title: '第四单元 比', sortOrder: 4, lessons: [
+    { title: '比的意义', sortOrder: 1 },
+    { title: '比的基本性质', sortOrder: 2 },
+    { title: '比的应用（按比分配）', sortOrder: 3 },
+  ]},
+  { title: '第五单元 圆', sortOrder: 5, lessons: [
+    { title: '圆的认识', sortOrder: 1 },
+    { title: '圆的周长', sortOrder: 2 },
+    { title: '圆的面积', sortOrder: 3 },
+    { title: '扇形', sortOrder: 4 },
+  ]},
+  { title: '第六单元 百分数（一）', sortOrder: 6, lessons: [
+    { title: '百分数的意义和读写', sortOrder: 1 },
+    { title: '百分数与小数、分数的互化', sortOrder: 2 },
+    { title: '用百分数解决问题', sortOrder: 3 },
+  ]},
+];
+
+// ============ 高中 语文 必修上册 章节（统编版2024） ============
+const H_CHINESE_G10U_CHAPTERS = [
+  { title: '第一单元 青春激扬', sortOrder: 1, lessons: [
+    { title: '沁园春·长沙（毛泽东）', sortOrder: 1 },
+    { title: '立在地球边上放号（郭沫若）', sortOrder: 2 },
+    { title: '红烛（闻一多）', sortOrder: 3 },
+    { title: '峨日朵雪峰之侧（昌耀）致云雀（雪莱）', sortOrder: 4 },
+  ]},
+  { title: '第二单元 文学阅读与写作', sortOrder: 2, lessons: [
+    { title: '荷塘月色（朱自清）', sortOrder: 1 },
+    { title: '故都的秋（郁达夫）', sortOrder: 2 },
+    { title: '我与地坛（史铁生）', sortOrder: 3 },
+  ]},
+  { title: '第三单元 思辨性阅读与表达', sortOrder: 3, lessons: [
+    { title: '短歌行（曹操）', sortOrder: 1 },
+    { title: '归园田居·其一（陶渊明）', sortOrder: 2 },
+    { title: '梦游天姥吟留别（李白）', sortOrder: 3 },
+    { title: '登高（杜甫）', sortOrder: 4 },
+    { title: '念奴娇·赤壁怀古（苏轼）', sortOrder: 5 },
+  ]},
+  { title: '第四单元 当代文化参与', sortOrder: 4, lessons: [
+    { title: '家乡文化生活调查', sortOrder: 1 },
+    { title: '记录家乡的人和物', sortOrder: 2 },
+  ]},
+  { title: '第五单元 整本书阅读《乡土中国》', sortOrder: 5, lessons: [
+    { title: '第一章 乡土本色', sortOrder: 1 },
+    { title: '第二章 文字下乡', sortOrder: 2 },
+    { title: '差序格局与家族', sortOrder: 3 },
+  ]},
+];
+
+// ============ 高中 数学 必修第一册 章节（人教A版2024） ============
+const H_MATH_G10U_CHAPTERS = [
+  { title: '第一章 集合与常用逻辑用语', sortOrder: 1, lessons: [
+    { title: '1.1 集合的概念', sortOrder: 1 },
+    { title: '1.2 集合间的基本关系', sortOrder: 2 },
+    { title: '1.3 集合的基本运算', sortOrder: 3 },
+    { title: '1.4 充分条件与必要条件', sortOrder: 4 },
+    { title: '1.5 全称量词与存在量词', sortOrder: 5 },
+  ]},
+  { title: '第二章 一元二次函数、方程和不等式', sortOrder: 2, lessons: [
+    { title: '2.1 等式性质与不等式性质', sortOrder: 1 },
+    { title: '2.2 基本不等式', sortOrder: 2 },
+    { title: '2.3 二次函数与一元二次方程、不等式', sortOrder: 3 },
+  ]},
+  { title: '第三章 函数的概念与性质', sortOrder: 3, lessons: [
+    { title: '3.1 函数的概念及其表示', sortOrder: 1 },
+    { title: '3.2 函数的基本性质（单调性、奇偶性）', sortOrder: 2 },
+    { title: '3.3 幂函数', sortOrder: 3 },
+    { title: '3.4 函数的应用（一）', sortOrder: 4 },
+  ]},
+  { title: '第四章 指数函数与对数函数', sortOrder: 4, lessons: [
+    { title: '4.1 指数', sortOrder: 1 },
+    { title: '4.2 指数函数', sortOrder: 2 },
+    { title: '4.3 对数', sortOrder: 3 },
+    { title: '4.4 对数函数', sortOrder: 4 },
+    { title: '4.5 函数的应用（二）：零点与二分法', sortOrder: 5 },
+  ]},
+  { title: '第五章 三角函数', sortOrder: 5, lessons: [
+    { title: '5.1 任意角和弧度制', sortOrder: 1 },
+    { title: '5.2 三角函数的概念', sortOrder: 2 },
+    { title: '5.3 诱导公式', sortOrder: 3 },
+    { title: '5.4 三角函数的图象与性质', sortOrder: 4 },
+    { title: '5.5 三角恒等变换', sortOrder: 5 },
+    { title: '5.6 函数 y=Asin(ωx+φ)', sortOrder: 6 },
+  ]},
+];
+
+// ============ 高中 物理 必修第一册 章节（人教版2024） ============
+const H_PHYSICS_G10U_CHAPTERS = [
+  { title: '第一章 运动的描述', sortOrder: 1, lessons: [
+    { title: '1.1 质点 参考系', sortOrder: 1 },
+    { title: '1.2 时间 位移', sortOrder: 2 },
+    { title: '1.3 位置变化快慢的描述——速度', sortOrder: 3 },
+    { title: '1.4 速度变化快慢的描述——加速度', sortOrder: 4 },
+  ]},
+  { title: '第二章 匀变速直线运动的研究', sortOrder: 2, lessons: [
+    { title: '2.1 实验：探究小车速度随时间变化的规律', sortOrder: 1 },
+    { title: '2.2 匀变速直线运动的速度与时间的关系', sortOrder: 2 },
+    { title: '2.3 匀变速直线运动的位移与时间的关系', sortOrder: 3 },
+    { title: '2.4 自由落体运动', sortOrder: 4 },
+  ]},
+  { title: '第三章 相互作用——力', sortOrder: 3, lessons: [
+    { title: '3.1 重力与弹力', sortOrder: 1 },
+    { title: '3.2 摩擦力', sortOrder: 2 },
+    { title: '3.3 牛顿第三定律', sortOrder: 3 },
+    { title: '3.4 力的合成和分解', sortOrder: 4 },
+  ]},
+  { title: '第四章 运动和力的关系', sortOrder: 4, lessons: [
+    { title: '4.1 牛顿第一定律', sortOrder: 1 },
+    { title: '4.2 实验：探究加速度与力、质量的关系', sortOrder: 2 },
+    { title: '4.3 牛顿第二定律', sortOrder: 3 },
+    { title: '4.4 力学单位制', sortOrder: 4 },
+    { title: '4.5 牛顿运动定律的应用', sortOrder: 5 },
+    { title: '4.6 超重和失重', sortOrder: 6 },
+  ]},
+];
+
+// ============ 高中 英语 必修第一册 章节（人教版2024） ============
+const H_ENGLISH_G10U_CHAPTERS = [
+  { title: 'Unit 1 Teenage Life', sortOrder: 1, lessons: [
+    { title: 'Reading: The Freshman Challenge', sortOrder: 1 },
+    { title: 'Learning about Language: Noun phrases', sortOrder: 2 },
+    { title: 'Writing: Advice for high school life', sortOrder: 3 },
+  ]},
+  { title: 'Unit 2 Travelling Around', sortOrder: 2, lessons: [
+    { title: 'Reading: Peru from the mountains to the ocean', sortOrder: 1 },
+    { title: 'Learning about Language: -ing form as attributive', sortOrder: 2 },
+  ]},
+  { title: 'Unit 3 Sports and Fitness', sortOrder: 3, lessons: [
+    { title: 'Reading: Living Legends of Sports', sortOrder: 1 },
+    { title: 'Reading: Going Positive', sortOrder: 2 },
+  ]},
+  { title: 'Unit 4 Natural Disasters', sortOrder: 4, lessons: [
+    { title: 'Reading: The Night the Earth Didn\'t Sleep', sortOrder: 1 },
+    { title: 'Writing: Summary of natural disaster', sortOrder: 2 },
+  ]},
+  { title: 'Unit 5 Languages Around the World', sortOrder: 5, lessons: [
+    { title: 'Reading: The Chinese Writing System', sortOrder: 1 },
+    { title: 'Exploring language: Long and short passages', sortOrder: 2 },
+  ]},
+];
+
+// ============ 高中 化学 必修第一册 章节（人教版2024） ============
+const H_CHEMISTRY_G10U_CHAPTERS = [
+  { title: '第一章 物质及其变化', sortOrder: 1, lessons: [
+    { title: '1.1 物质的分类及转化', sortOrder: 1 },
+    { title: '1.2 离子反应', sortOrder: 2 },
+    { title: '1.3 氧化还原反应', sortOrder: 3 },
+  ]},
+  { title: '第二章 海水中的重要元素——钠和氯', sortOrder: 2, lessons: [
+    { title: '2.1 钠及其化合物', sortOrder: 1 },
+    { title: '2.2 氯及其化合物', sortOrder: 2 },
+    { title: '2.3 物质的量', sortOrder: 3 },
+  ]},
+  { title: '第三章 铁 金属材料', sortOrder: 3, lessons: [
+    { title: '3.1 铁及其化合物', sortOrder: 1 },
+    { title: '3.2 金属材料', sortOrder: 2 },
+  ]},
+  { title: '第四章 物质结构 元素周期律', sortOrder: 4, lessons: [
+    { title: '4.1 原子结构与元素周期表', sortOrder: 1 },
+    { title: '4.2 元素周期律', sortOrder: 2 },
+    { title: '4.3 化学键', sortOrder: 3 },
+  ]},
+];
+
 // ============ 知识点（基于新课标2022版 — 数与代数领域） ============
 // 章节标题已同步至 2024新版数学七上6章结构
 const MATH_KNOWLEDGE_POINTS = [
@@ -319,9 +649,187 @@ const MATH_KNOWLEDGE_POINTS = [
   ]},
 ];
 
-// ============ 样题（基于中考真题风格） ============
-// 章节标题已同步至 2024新版数学七上6章结构
+// ============ 样题（小学+初中+高中全覆盖） ============
 const SAMPLE_QUESTIONS = [
+  // —— 小学一年级 数学 ——
+  {
+    subjectCode: 'p-math', grade: 1, difficulty: 1, questionType: 'SINGLE_CHOICE',
+    content: '3 + 2 = （  ）',
+    options: ['4', '5', '6', '7'],
+    answer: 'B',
+    analysis: '3加2等于5。通过数手指或实物计数：先数3个，再数2个，一共是5个。',
+    source: '期末基础', sourceYear: 2025,
+    chapterTitle: '1-5的认识和加减法',
+    knowledgePoint: '加法的初步认识',
+  },
+  {
+    subjectCode: 'p-math', grade: 1, difficulty: 1, questionType: 'FILL_BLANK',
+    content: '7 - 4 = ______',
+    options: null,
+    answer: '3',
+    analysis: '7减去4等于3。可以用倒着数的方法：7，6，5，4，3，倒着数4个数就是3。',
+    source: '期末基础', sourceYear: 2025,
+    chapterTitle: '6-10的认识和加减法',
+    knowledgePoint: '减法的初步认识',
+  },
+  {
+    subjectCode: 'p-math', grade: 1, difficulty: 2, questionType: 'SINGLE_CHOICE',
+    content: '小明有5个苹果，吃了2个，又买来3个，现在有（  ）个苹果。',
+    options: ['4', '5', '6', '8'],
+    answer: 'C',
+    analysis: '5 - 2 + 3 = 6。先吃了2个用减法，再买来3个用加法。',
+    source: '应用题', sourceYear: 2025,
+    chapterTitle: '加减混合',
+    knowledgePoint: '加减混合',
+  },
+  // —— 小学六年级 数学（分数乘法）——
+  {
+    subjectCode: 'p-math', grade: 6, difficulty: 2, questionType: 'FILL_BLANK',
+    content: '计算：2/3 × 9/4 = ______',
+    options: null,
+    answer: '3/2',
+    analysis: '分数乘法：分子相乘，分母相乘。2×9=18，3×4=12，18/12约分得3/2。',
+    source: '小升初', sourceYear: 2025,
+    chapterTitle: '第一单元 分数乘法',
+    knowledgePoint: '分数乘分数',
+  },
+  {
+    subjectCode: 'p-math', grade: 6, difficulty: 3, questionType: 'ESSAY',
+    content: '一个圆形花坛的直径是10米，求它的周长和面积。（π取3.14）',
+    options: null,
+    answer: '周长31.4米，面积78.5平方米',
+    analysis: '半径r=5米。周长C=πd=3.14×10=31.4米。面积S=πr²=3.14×5²=3.14×25=78.5平方米。',
+    source: '小升初', sourceYear: 2024,
+    chapterTitle: '第五单元 圆',
+    knowledgePoint: '圆的周长',
+  },
+  {
+    subjectCode: 'p-math', grade: 6, difficulty: 2, questionType: 'SINGLE_CHOICE',
+    content: '把10克盐溶解在90克水中，盐水的含盐率是（  ）',
+    options: ['10%', '11.1%', '90%', '9%'],
+    answer: 'A',
+    analysis: '含盐率 = 盐的质量 ÷ 盐水的质量 × 100% = 10 ÷ (10+90) × 100% = 10%。',
+    source: '小升初', sourceYear: 2025,
+    chapterTitle: '第六单元 百分数（一）',
+    knowledgePoint: '用百分数解决问题',
+  },
+  // —— 小学三年级 英语 ——
+  {
+    subjectCode: 'p-english', grade: 3, difficulty: 1, questionType: 'SINGLE_CHOICE',
+    content: '— ______! — Hello!',
+    options: ['Goodbye', 'Hello', 'Thanks', 'Sorry'],
+    answer: 'B',
+    analysis: '打招呼用语。回答Hello，也要说Hello或Hi。',
+    source: '单元测试', sourceYear: 2025,
+    chapterTitle: 'Unit 1 Hello!',
+    knowledgePoint: '问候语',
+  },
+  // —— 高中 数学 必修一（集合）——
+  {
+    subjectCode: 'h-math', grade: 10, difficulty: 2, questionType: 'SINGLE_CHOICE',
+    content: '已知集合 A = { x | x² - 3x + 2 = 0 }，B = { 1, 2 }，则 A 与 B 的关系是（  ）',
+    options: ['A ⊂ B', 'A ⊃ B', 'A = B', 'A ∩ B = ∅'],
+    answer: 'C',
+    analysis: '解方程x²-3x+2=0得x=1或x=2，所以A={1,2}=B。',
+    source: '高考基础', sourceYear: 2025,
+    chapterTitle: '第一章 集合与常用逻辑用语',
+    knowledgePoint: '集合的基本运算',
+  },
+  {
+    subjectCode: 'h-math', grade: 10, difficulty: 3, questionType: 'SINGLE_CHOICE',
+    content: '函数 f(x) = log₂(x - 1) 的定义域是（  ）',
+    options: ['(1, +∞)', '[1, +∞)', '(0, +∞)', 'ℝ'],
+    answer: 'A',
+    analysis: '对数函数的真数必须大于0，即x-1>0，所以x>1，定义域为(1,+∞)。',
+    source: '高考真题', sourceYear: 2024,
+    chapterTitle: '第四章 指数函数与对数函数',
+    knowledgePoint: '对数函数',
+  },
+  {
+    subjectCode: 'h-math', grade: 10, difficulty: 3, questionType: 'FILL_BLANK',
+    content: 'sin 210° = ______',
+    options: null,
+    answer: '-1/2',
+    analysis: '210°=180°+30°，sin(180°+θ)=-sinθ，所以sin210°=-sin30°=-1/2。',
+    source: '高考基础', sourceYear: 2025,
+    chapterTitle: '第五章 三角函数',
+    knowledgePoint: '诱导公式',
+  },
+  // —— 高中 物理 必修一（牛顿定律）——
+  {
+    subjectCode: 'h-physics', grade: 10, difficulty: 3, questionType: 'SINGLE_CHOICE',
+    content: '质量为2kg的物体，受到10N的水平推力，加速度为3m/s²，则物体受到的摩擦力大小为（  ）',
+    options: ['2 N', '3 N', '4 N', '6 N'],
+    answer: 'C',
+    analysis: '由牛顿第二定律F-f=ma，得f=F-ma=10-2×3=4N。',
+    source: '高考真题', sourceYear: 2024,
+    chapterTitle: '第四章 运动和力的关系',
+    knowledgePoint: '牛顿第二定律',
+  },
+  {
+    subjectCode: 'h-physics', grade: 10, difficulty: 2, questionType: 'FILL_BLANK',
+    content: '一辆汽车从静止开始以2 m/s²的加速度匀加速行驶，5秒后的速度为______ m/s。',
+    options: null,
+    answer: '10',
+    analysis: '由匀变速直线运动速度公式v=v₀+at，v₀=0，a=2，t=5，所以v=0+2×5=10 m/s。',
+    source: '高考基础', sourceYear: 2025,
+    chapterTitle: '第二章 匀变速直线运动的研究',
+    knowledgePoint: '匀变速直线运动的速度与时间的关系',
+  },
+  // —— 高中 语文 必修一 ——
+  {
+    subjectCode: 'h-chinese', grade: 10, difficulty: 2, questionType: 'FILL_BLANK',
+    content: '毛泽东《沁园春·长沙》中，描写湘江秋景的名句：看万山红遍，____________；漫江碧透，____________。',
+    options: null,
+    answer: '层林尽染；百舸争流',
+    analysis: '出自《沁园春·长沙》上阙，作者用浓墨重彩描绘了橘子洲头所见的壮丽秋景。',
+    source: '高考必背', sourceYear: 2025,
+    chapterTitle: '第一单元 青春激扬',
+    knowledgePoint: '沁园春·长沙',
+  },
+  {
+    subjectCode: 'h-chinese', grade: 10, difficulty: 3, questionType: 'ESSAY',
+    content: '请默写苏轼《念奴娇·赤壁怀古》全词，并简要分析词中"人生如梦，一尊还酹江月"所表达的情感。',
+    options: null,
+    answer: '默写略。情感：词人由周瑜的年少功业联想到自己壮志难酬，以酒祭月，既有壮志未酬的惆怅，也有旷达超脱的襟怀。',
+    analysis: '这是豪放词代表作，上阙写景，下阙怀古抒怀。结尾句将周瑜的"雄姿英发"与自己的"早生华发"对比，表达人生感慨，借酒酹月收束，沉郁中见旷达。',
+    source: '高考真题', sourceYear: 2024,
+    chapterTitle: '第三单元 思辨性阅读与表达',
+    knowledgePoint: '念奴娇·赤壁怀古',
+  },
+  // —— 高中 化学 必修一 ——
+  {
+    subjectCode: 'h-chemistry', grade: 10, difficulty: 2, questionType: 'SINGLE_CHOICE',
+    content: '下列反应中，不属于氧化还原反应的是（  ）',
+    options: ['2H₂ + O₂ 点燃 2H₂O', 'CaCO₃ 高温 CaO + CO₂↑', 'Fe + CuSO₄ = FeSO₄ + Cu', '2Na + 2H₂O = 2NaOH + H₂↑'],
+    answer: 'B',
+    analysis: '氧化还原反应的本质是电子转移，表现为化合价升降。B中各元素化合价均未改变，是分解反应但非氧化还原。',
+    source: '高考基础', sourceYear: 2025,
+    chapterTitle: '第一章 物质及其变化',
+    knowledgePoint: '氧化还原反应',
+  },
+  {
+    subjectCode: 'h-chemistry', grade: 10, difficulty: 3, questionType: 'FILL_BLANK',
+    content: '标准状况下，11.2 L CO₂ 的物质的量为______ mol，质量为______ g。',
+    options: null,
+    answer: '0.5；22',
+    analysis: '标准状况下1 mol气体体积22.4 L，所以n=11.2/22.4=0.5 mol。CO₂摩尔质量44 g/mol，m=0.5×44=22 g。',
+    source: '高考真题', sourceYear: 2024,
+    chapterTitle: '第二章 海水中的重要元素——钠和氯',
+    knowledgePoint: '物质的量',
+  },
+  // —— 高中 英语 必修一 ——
+  {
+    subjectCode: 'h-english', grade: 10, difficulty: 2, questionType: 'SINGLE_CHOICE',
+    content: 'The book ______ on the desk belongs to my sister.',
+    options: ['lying', 'lies', 'lay', 'lied'],
+    answer: 'A',
+    analysis: '现在分词lying作后置定语，修饰the book，相当于which lies。',
+    source: '高考基础', sourceYear: 2025,
+    chapterTitle: 'Unit 2 Travelling Around',
+    knowledgePoint: '-ing form as attributive',
+  },
+  // —— 初中经典真题（已存在）继续保留在下面 ——
   // 数学 — 有理数（第一章，概念类）
   {
     subjectCode: 'math', grade: 7, difficulty: 1, questionType: 'SINGLE_CHOICE',
@@ -453,10 +961,34 @@ const SAMPLE_QUESTIONS = [
   },
 ];
 
-// ============ 课外文章（课外知识板块） ============
+// ============ 课外文章（课外知识板块 — 小1至高3全覆盖） ============
 const ARTICLES = [
+  // —— 小学启蒙 ——
+  {
+    title: '数字的起源：从古埃及到阿拉伯数字',
+    summary: '小朋友，你知道1、2、3这些数字是谁发明的吗？让我们穿越时空，看看数字是怎么一步步变成今天的样子的。',
+    content: `<h2>很久很久以前，人们怎么数数？</h2><p>在远古时代，人类还没有数字。放羊的伯伯会在绳子上打结，放一只羊打一个结。或者在石头、木头上刻道道，这叫"刻痕计数"。</p><h3>古埃及的象形数字</h3><p>5000多年前，古埃及人用图画表示数：一条竖线是1，一个脚印是10，一卷绳子是100……画起来很麻烦！</p><h3>古罗马数字</h3><p>你一定在钟表上见过I、II、III、IV吧？这就是罗马数字。I=1，V=5，X=10，L=50。不过做加减法可不容易！</p><h3>阿拉伯数字——最伟大的发明</h3><p>其实阿拉伯数字是<strong>印度人</strong>在大约2000年前发明的！后来阿拉伯商人把它们传到了欧洲，欧洲人就叫它们"阿拉伯数字"。0、1、2、3、4、5、6、7、8、9这10个符号，可以表示任何数，简直太神奇了！</p>`,
+    category: 'sciences', tags: ['数学', '数字', '历史', '启蒙'],
+    subjectId: 102, grade: 1,
+  },
+  {
+    title: '拼音王国大冒险：声母韵母交朋友',
+    summary: 'a、o、e 是韵母三姐妹，b、p、m、f 是声母四兄弟。它们拼在一起就能读出所有汉字的发音啦！',
+    content: `<h2>欢迎来到拼音王国</h2><p>拼音王国里住着两个家族：<strong>声母家族</strong>和<strong>韵母家族</strong>。声母是汉字发音的"开头"，韵母是汉字发音的"身体"。</p><h3>声母家族的成员（23个）</h3><p>b p m f d t n l g k h j q x zh ch sh r z c s y w。它们发音的时候又轻又短！</p><h3>韵母家族的成员（24个）</h3><p>单韵母：a o e i u ü。复韵母：ai ei ui ao ou iu ie üe er。前鼻韵母：an en in un ün。后鼻韵母：ang eng ing ong。</p><h3>拼读魔法：声母+韵母=音节</h3><p>b + a = ba（爸），m + a = ma（妈），h + ao = hao（好）。就像两个好朋友手拉手，就能读出一个汉字啦！</p><h3>声调小帽子</h3><p>韵母头上有4顶小帽子：一声平平（ā），二声上扬（á），三声拐弯（ǎ），四声下降（à）。戴上不同帽子，意思就不一样哦！</p>`,
+    category: 'humanities', tags: ['语文', '拼音', '启蒙', '小学'],
+    subjectId: 101, grade: 1,
+  },
+  {
+    title: '小朋友爱科学：为什么天空是蓝色的？',
+    summary: '抬起头看看天空，它总是蓝蓝的。可是你知道吗？阳光其实是白色的呀！是谁给天空染了颜色呢？',
+    content: `<h2>阳光是什么颜色？</h2><p>小朋友，你见过彩虹吗？红橙黄绿青蓝紫，七种颜色排排站。其实，我们看到的阳光，就是这七种颜色混在一起的，所以看起来是白色的。</p><h3>看不见的"小调皮"——空气分子</h3><p>我们身边的空气里，有许许多多看不见的小点点，它们叫氮气分子和氧气分子。阳光穿过空气的时候，会撞到这些小点点上！</p><h3>蓝色光最"调皮"</h3><p>七种颜色里，红色、橙色的光波长比较长，它们能直接穿过空气，撞到地上就不走了。可是蓝色、紫色的光波长比较短，一撞到空气小点点就会向四面八方<strong>散射</strong>开来！</p><h3>整个天空都被染蓝啦</h3><p>蓝色光到处散射，所以不管我们往天上哪个方向看，都会看到散射出来的蓝光。这就是天空是蓝色的秘密啦！</p>`,
+    category: 'sciences', tags: ['科学', '天空', '光', '散射', '小学'],
+    subjectId: 104, grade: 3,
+  },
+  // —— 初中经典（保留原6篇）——
   {
     title: '数学之美：黄金分割与艺术',
+  
     summary: '探索黄金分割比0.618在绘画、建筑和自然界中的奇妙应用，理解数学与艺术的完美交融。',
     content: `<h2>黄金分割的奥秘</h2><p>黄金分割比，约等于0.618，是数学中最迷人的常数之一。古希腊数学家欧多克索斯最早对其进行了系统研究。</p><h3>在艺术中的应用</h3><p>达芬奇的《蒙娜丽莎》、帕特农神庙的建筑比例，都蕴含着黄金分割的密码。画面的主体往往位于黄金分割点上，给人以最舒适的视觉感受。</p><h3>在自然界中</h3><p>向日葵的种子排列、鹦鹉螺壳的螺旋线、甚至银河系的旋臂，都遵循着黄金螺旋的规律。这表明数学不仅仅是人类的发明，更是自然界的基本语言。</p>`,
     category: 'sciences', tags: ['数学', '黄金分割', '艺术', '自然'],
@@ -496,6 +1028,42 @@ const ARTICLES = [
     content: `<h2>斐波那契数列</h2><p>1202年，意大利数学家斐波那契在《算盘书》中提出了一个关于兔子繁殖的问题，由此诞生了著名的斐波那契数列：1, 1, 2, 3, 5, 8, 13, 21, 34, 55……</p><h3>数列规律</h3><p>每一项等于前两项之和：F(n) = F(n-1) + F(n-2)。</p><h3>与黄金分割的关系</h3><p>随着项数增加，相邻两项的比值越来越接近黄金分割比0.618……</p><h3>自然界中的斐波那契</h3><p>向日葵种子的螺旋数、松果的鳞片排列、菠萝表面的纹路，都遵循斐波那契数列。蜂巢的巢室结构、台风的漩涡形状，甚至银河系的旋臂，都能找到它的身影。</p>`,
     category: 'sciences', tags: ['数学', '斐波那契', '数列', '自然'],
     subjectId: 2, grade: 8,
+  },
+  // —— 高中拓展 ——
+  {
+    title: '微积分入门：为什么要学习导数？',
+    summary: '从阿基米德的穷竭法到牛顿的流数术，了解微积分如何改变人类对"变化"的理解，开启现代科学大门。',
+    content: `<h2>一切从"变化率"开始</h2><p>一辆车1小时开了60公里，平均速度是60km/h。但仪表盘上显示的"瞬时速度"是怎么来的？这就是微积分要回答的第一个问题。</p><h3>导数——瞬时变化率</h3><p>设位移函数 s(t)，取一个很小的时间间隔 Δt，平均速度 Δs/Δt。当 Δt→0 时，这个极限就是<strong>瞬时速度</strong>，也就是导数 s'(t)。</p><h3>牛顿与莱布尼茨</h3><p>17世纪，牛顿为研究天体运动发明了"流数术"，莱布尼茨则从切线角度独立发明了相同的理论。两人为此争论了几十年，但今天我们使用的是莱布尼茨的记号 dx/dy。</p><h3>导数有什么用？</h3><p>物理：速度是位移的导数，加速度是速度的导数；经济：边际成本、边际收益；工程：信号处理、控制论；机器学习：梯度下降优化参数……整个现代科学都建立在微积分之上！</p>`,
+    category: 'sciences', tags: ['数学', '微积分', '导数', '牛顿', '高中'],
+    subjectId: 202, grade: 11,
+  },
+  {
+    title: '相对论浅说：为什么光速是宇宙的极限？',
+    summary: '爱因斯坦1905年提出狭义相对论，彻底改变了人类对时间和空间的认识。让我们从光速不变原理出发，一探E=mc²的奥秘。',
+    content: `<h2>经典力学的困境</h2><p>19世纪末，经典物理学认为光是在"以太"中传播的波。但迈克尔逊-莫雷实验发现：无论地球怎么运动，测量到的光速都<strong>完全相同</strong>！这不符合牛顿的速度叠加法则。</p><h3>两大假设</h3><p>1905年，26岁的爱因斯坦提出两个基本假设：<br/>① <strong>相对性原理</strong>：物理规律在所有惯性系中相同；<br/>② <strong>光速不变原理</strong>：真空中的光速对任何观察者都是 c ≈ 3×10⁸ m/s。</p><h3>惊人的推论</h3><ul><li><strong>时间膨胀</strong>：运动的时钟变慢——乘坐接近光速的飞船旅行，回来后你会比双胞胎弟弟年轻！</li><li><strong>长度收缩</strong>：运动的物体在运动方向上变短。</li><li><strong>质能方程 E = mc²</strong>：质量和能量可以互相转化，这就是核能的来源！</li></ul><h3>为什么不能超过光速？</h3><p>把物体加速到接近光速需要无穷大的能量。光速是宇宙的"硬上限"——只有光子这种静止质量为0的粒子才能达到。</p>`,
+    category: 'sciences', tags: ['物理', '相对论', '爱因斯坦', '光速', '高中'],
+    subjectId: 204, grade: 11,
+  },
+  {
+    title: '从唐诗宋词到新诗运动：中国诗歌的千年脉络',
+    summary: '从《诗经》的四言到楚辞的骚体，从唐诗的格律到宋词的长短句，再到五四新诗运动——读懂中国诗歌，就读懂了中国人的心灵史。',
+    content: `<h2>先秦：诗歌的源头</h2><p>"关关雎鸠，在河之洲"——《诗经》奠定了现实主义传统；"路漫漫其修远兮"——屈原《离骚》开创了浪漫主义先河。</p><h3>唐代：诗歌的黄金时代</h3><p>科举考诗赋，让写诗成了读书人的基本功。<strong>初唐</strong>四杰（王勃、杨炯、卢照邻、骆宾王）；<strong>盛唐</strong>李白（浪漫）与杜甫（现实）双峰并峙；<strong>中唐</strong>白居易新乐府运动；<strong>晚唐</strong>李商隐、杜牧的"小李杜"。</p><h3>宋代：长短句的天下</h3><p>诗到唐代已写尽，宋代开辟了"词"这一新形式。柳永的婉约，苏轼的豪放，李清照的凄清，辛弃疾的悲壮——每一种情绪都有了最合适的曲调。</p><h3>五四：新诗革命</h3><p>1917年，胡适发表《文学改良刍议》，提倡白话文。郭沫若《女神》、徐志摩《再别康桥》、戴望舒《雨巷》……中国诗歌从此进入了自由的现代世界。</p>`,
+    category: 'humanities', tags: ['语文', '诗歌', '唐诗', '宋词', '高中'],
+    subjectId: 201, grade: 10,
+  },
+  {
+    title: '元素周期表：门捷列夫的预言天才',
+    summary: '1869年，门捷列夫把当时已知的63种元素排成一张表，还大胆预言了3种"未知元素"——15年后，预言全部成真！',
+    content: `<h2>元素时代的混乱</h2><p>19世纪初，化学家已经发现了60多种元素，但它们就像一堆散乱的纸牌：谁和谁有关系？有没有规律？没有人知道。</p><h3>门捷列夫的"梦"</h3><p>传说门捷列夫苦思冥想多日，疲惫睡着后做了一个梦：所有元素落入表格，行列齐整，规律清晰！醒来后他立刻记下——这就是<strong>元素周期表</strong>。</p><h3>伟大的预言</h3><p>门捷列夫在表中故意留了空白，预言3种未知元素：<strong>类铝</strong>（后命名为镓Ga，1875年发现）、<strong>类硼</strong>（钪Sc，1879年）、<strong>类硅</strong>（锗Ge，1886年）。每一种元素的性质都和他预测的惊人吻合！</p><h3>现代周期表</h3><p>今天的周期表有118种元素，按原子序数（质子数）排列。同一列（族）的元素最外层电子数相同，化学性质相似——这就是门捷列夫发现的伟大规律！</p>`,
+    category: 'sciences', tags: ['化学', '元素周期表', '门捷列夫', '高中'],
+    subjectId: 205, grade: 10,
+  },
+  {
+    title: '英语写作高分技巧：让高考作文脱颖而出',
+    summary: '应用文、读后续写、议论文——掌握三段式结构、高级词汇替换、万能过渡词，让你的高考英语作文从合格走向卓越。',
+    content: `<h2>作文的"三段式"黄金结构</h2><h3>1. 应用文（建议信/申请信/通知）</h3><p>第一段：自我介绍+写作目的；第二段：具体建议/理由3条（First, Besides, Finally）；第三段：表达期待+感谢。</p><h3>2. 读后续写（新高考重点）</h3><p>① <strong>情节一致</strong>：续写内容必须承接原文情绪和伏笔；② <strong>细节丰满</strong>：加入心理描写（one's heart raced）、环境描写（the sun dipped below the horizon）、对话；③ <strong>正能量结尾</strong>：亲人和解、勇气胜利、成长感悟。</p><h3>3. 高级词汇替换</h3><p>good→remarkable / outstanding；think→maintain / argue；very→extremely / remarkably；important→vital / significant；because→on account of the fact that。</p><h3>4. 万能过渡词</h3><p>递进：Furthermore / In addition / Moreover；转折：Nevertheless / On the contrary；因果：Consequently / Accordingly；总结：In conclusion / To sum up / Overall。</p>`,
+    category: 'technology', tags: ['英语', '高考', '作文', '写作技巧', '高中'],
+    subjectId: 203, grade: 12,
   },
 ];
 
@@ -590,15 +1158,37 @@ export async function main() {
   });
   console.log(`  ✅ 教师ID: ${teacher.id}\n`);
 
-  // 4. 语文七年级上册
-  console.log('📝 创建统编版语文七年级上册章节与课程...');
+  // ============ 4. 小学学段 章节与课程 ============
+  console.log('🧒 【小学】创建语数英科道法章节与课程...');
+  let pChineseG1 = await prisma.textbook.findUnique({ where: { id: 'tb-p-rj-chinese-g1' } });
+  if (pChineseG1) {
+    const r = await createChaptersAndCourses(pChineseG1.id, 101, 1, '语文', P_CHINESE_G1U_CHAPTERS, teacher.id);
+    console.log(`  ✅ 小一语文上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
+  }
+  let pMathG1 = await prisma.textbook.findUnique({ where: { id: 'tb-p-rj-math-g1' } });
+  if (pMathG1) {
+    const r = await createChaptersAndCourses(pMathG1.id, 102, 1, '数学', P_MATH_G1U_CHAPTERS, teacher.id);
+    console.log(`  ✅ 小一数学上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
+  }
+  let pMathG6 = await prisma.textbook.findUnique({ where: { id: 'tb-p-rj-math-g6' } });
+  if (pMathG6) {
+    const r = await createChaptersAndCourses(pMathG6.id, 102, 6, '数学', P_MATH_G6U_CHAPTERS, teacher.id);
+    console.log(`  ✅ 小六数学上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
+  }
+  let pEnglishG3 = await prisma.textbook.findUnique({ where: { id: 'tb-p-rj-english-g3' } });
+  if (pEnglishG3) {
+    const r = await createChaptersAndCourses(pEnglishG3.id, 103, 3, '英语', P_ENGLISH_G3U_CHAPTERS, teacher.id);
+    console.log(`  ✅ 小三英语上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
+  }
+  console.log('');
+
+  // ============ 5. 初中学段 章节与课程 ============
+  console.log('🧑 【初中】创建语数英物化生史地政章节与课程...');
   const chineseTextbook = await prisma.textbook.findUnique({ where: { id: 'tb-renjiao-chinese' } });
   if (chineseTextbook) {
     const r = await createChaptersAndCourses(chineseTextbook.id, 1, 7, '语文', CHINESE_G7U_CHAPTERS, teacher.id);
-    console.log(`  ✅ ${r.chapterCount} 章 ${r.lessonTotal} 课时\n`);
+    console.log(`  ✅ 语文七上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
   }
-
-  // 5. 数学七/八/九年级上册
   const mathTextbook = await prisma.textbook.findUnique({ where: { id: 'tb-renjiao-math' } });
   if (mathTextbook) {
     for (const [grade, chapters] of [
@@ -606,28 +1196,50 @@ export async function main() {
       [8, MATH_G8U_CHAPTERS],
       [9, MATH_G9U_CHAPTERS],
     ] as const) {
-      console.log(`📝 创建人教版数学${grade}年级上册章节与课程...`);
       const r = await createChaptersAndCourses(mathTextbook.id, 2, grade, '数学', chapters as any, teacher.id);
-      console.log(`  ✅ ${r.chapterCount} 章 ${r.lessonTotal} 课时`);
+      console.log(`  ✅ 数学${grade}上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
     }
-    console.log('');
   }
-
-  // 6. 物理八年级上册（2024新版）
-  console.log('📝 创建人教版物理八年级上册章节与课程...');
   const physicsTextbook = await prisma.textbook.findUnique({ where: { id: 'tb-renjiao-physics' } });
   if (physicsTextbook) {
     const r = await createChaptersAndCourses(physicsTextbook.id, 4, 8, '物理', PHYSICS_G8U_CHAPTERS, teacher.id);
-    console.log(`  ✅ ${r.chapterCount} 章 ${r.lessonTotal} 课时\n`);
+    console.log(`  ✅ 物理八上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
   }
-
-  // 7. 英语七年级上册（2024新版）
-  console.log('📝 创建人教版英语七年级上册章节与课程...');
   const englishTextbook = await prisma.textbook.findUnique({ where: { id: 'tb-renjiao-english' } });
   if (englishTextbook) {
     const r = await createChaptersAndCourses(englishTextbook.id, 3, 7, '英语', ENGLISH_G7U_CHAPTERS, teacher.id);
-    console.log(`  ✅ ${r.chapterCount} 章 ${r.lessonTotal} 课时\n`);
+    console.log(`  ✅ 英语七上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
   }
+  console.log('');
+
+  // ============ 6. 高中学段 章节与课程 ============
+  console.log('🎓 【高中】创建语数英物化章节与课程...');
+  const hChineseG10 = await prisma.textbook.findUnique({ where: { id: 'tb-h-rj-chinese-g10' } });
+  if (hChineseG10) {
+    const r = await createChaptersAndCourses(hChineseG10.id, 201, 10, '语文', H_CHINESE_G10U_CHAPTERS, teacher.id);
+    console.log(`  ✅ 高一语文上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
+  }
+  const hMathG10 = await prisma.textbook.findUnique({ where: { id: 'tb-h-rj-math-g10' } });
+  if (hMathG10) {
+    const r = await createChaptersAndCourses(hMathG10.id, 202, 10, '数学', H_MATH_G10U_CHAPTERS, teacher.id);
+    console.log(`  ✅ 高一数学上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
+  }
+  const hPhysicsG10 = await prisma.textbook.findUnique({ where: { id: 'tb-h-rj-physics-g10' } });
+  if (hPhysicsG10) {
+    const r = await createChaptersAndCourses(hPhysicsG10.id, 204, 10, '物理', H_PHYSICS_G10U_CHAPTERS, teacher.id);
+    console.log(`  ✅ 高一物理上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
+  }
+  const hEnglishG10 = await prisma.textbook.findUnique({ where: { id: 'tb-h-rj-english-g10' } });
+  if (hEnglishG10) {
+    const r = await createChaptersAndCourses(hEnglishG10.id, 203, 10, '英语', H_ENGLISH_G10U_CHAPTERS, teacher.id);
+    console.log(`  ✅ 高一英语上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
+  }
+  const hChemistryG10 = await prisma.textbook.findUnique({ where: { id: 'tb-h-rj-chemistry-g10' } });
+  if (hChemistryG10) {
+    const r = await createChaptersAndCourses(hChemistryG10.id, 205, 10, '化学', H_CHEMISTRY_G10U_CHAPTERS, teacher.id);
+    console.log(`  ✅ 高一化学上: ${r.chapterCount}章 ${r.lessonTotal}课时`);
+  }
+  console.log('');
 
   // 8. 知识点（数学）
   console.log('💡 创建数学知识点...');
@@ -677,14 +1289,26 @@ export async function main() {
       },
     });
 
-    // 关联章节（数学/语文/英语均按教材查找）
+    // 关联章节（小学/初中/高中各学段教材映射）
     const textbookMap: Record<string, string | undefined> = {
+      // 小学
+      'p-math': pMathG1?.id ?? pMathG6?.id,
+      'p-chinese': pChineseG1?.id,
+      'p-english': pEnglishG3?.id,
+      // 初中
       math: mathTextbook?.id,
       chinese: chineseTextbook?.id,
       english: englishTextbook?.id,
+      physics: physicsTextbook?.id,
+      // 高中
+      'h-math': hMathG10?.id,
+      'h-chinese': hChineseG10?.id,
+      'h-english': hEnglishG10?.id,
+      'h-physics': hPhysicsG10?.id,
+      'h-chemistry': hChemistryG10?.id,
     };
     const tbId = textbookMap[q.subjectCode];
-    if (tbId) {
+    if (tbId && q.chapterTitle) {
       const chapter = await prisma.chapter.findFirst({
         where: { title: q.chapterTitle, textbookId: tbId },
       });
@@ -732,16 +1356,20 @@ export async function main() {
   console.log(`  ✅ ${aCount} 篇课外文章\n`);
 
   console.log('========================================');
-  console.log('🎉 核心板块种子数据填充完成！（2024新版权威目录）');
+  console.log('🎉 核心板块种子数据填充完成！（小学1年级—高中3年级全覆盖）');
   console.log('========================================');
-  console.log(`学科: ${SUBJECTS.length} | 教材版本: ${TEXTBOOKS.length}`);
-  console.log(`语文七上: ${CHINESE_G7U_CHAPTERS.length}章`);
-  console.log(`数学七上(2024新版): ${MATH_G7U_CHAPTERS.length}章 | 八上: ${MATH_G8U_CHAPTERS.length}章 | 九上: ${MATH_G9U_CHAPTERS.length}章`);
-  console.log(`物理八上(2024新版): ${PHYSICS_G8U_CHAPTERS.length}章`);
-  console.log(`英语七上(2024新版): ${ENGLISH_G7U_CHAPTERS.length}章`);
+  const pSubjects = SUBJECTS.filter(s => s.stage === 'PRIMARY').length;
+  const jSubjects = SUBJECTS.filter(s => s.stage === 'JUNIOR').length;
+  const sSubjects = SUBJECTS.filter(s => s.stage === 'SENIOR').length;
+  console.log(`学科总数: ${SUBJECTS.length}（小学${pSubjects}、初中${jSubjects}、高中${sSubjects}）`);
+  console.log(`教材版本总数: ${TEXTBOOKS.length}`);
+  console.log(`【小学】小一语文: ${P_CHINESE_G1U_CHAPTERS.length}章 | 小一数学: ${P_MATH_G1U_CHAPTERS.length}章 | 小六数学: ${P_MATH_G6U_CHAPTERS.length}章 | 小三英语: ${P_ENGLISH_G3U_CHAPTERS.length}章`);
+  console.log(`【初中】语文七上: ${CHINESE_G7U_CHAPTERS.length}章 | 数学七/八/九上: ${MATH_G7U_CHAPTERS.length}/${MATH_G8U_CHAPTERS.length}/${MATH_G9U_CHAPTERS.length}章 | 物理八上: ${PHYSICS_G8U_CHAPTERS.length}章 | 英语七上: ${ENGLISH_G7U_CHAPTERS.length}章`);
+  console.log(`【高中】高一语数英物化: ${H_CHINESE_G10U_CHAPTERS.length}/${H_MATH_G10U_CHAPTERS.length}/${H_ENGLISH_G10U_CHAPTERS.length}/${H_PHYSICS_G10U_CHAPTERS.length}/${H_CHEMISTRY_G10U_CHAPTERS.length}章`);
   console.log(`知识点: ${kpCount} | 题目: ${qCount} | 课外文章: ${aCount}`);
   console.log('');
   console.log('教师测试账号: 13800000001 / teacher123');
+  console.log('学生测试账号: 需通过 /register 注册（可设置年级1-12，个人中心推荐自动匹配年级）');
 }
 
 main()

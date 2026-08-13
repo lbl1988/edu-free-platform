@@ -4,15 +4,16 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireLogin, requireTeacher } from '@/lib/guards';
+import { getCurrentUser } from '@/lib/auth-context';
 import { ok, okPaginated, badRequest } from '@/lib/api-response';
 import { isValidGrade } from '@/lib/utils';
 import { BoardType, CourseStatus } from '@prisma/client';
 
 // GET /api/v1/courses — 课程列表（分页+筛选）
-// 学生：查看已发布课程；教师：查看自己创建的全部课程
+// 匿名/学生：查看已发布课程；教师：查看自己创建的全部课程；管理员：全部
 export async function GET(request: NextRequest) {
-  const [user, err] = await requireLogin(request);
-  if (err) return err;
+  // 允许匿名访问，登录用户按角色区分权限
+  const maybeUser = await getCurrentUser(request);
 
   const { searchParams } = new URL(request.url);
   const page = Math.max(1, Number(searchParams.get('page') ?? 1));
@@ -23,13 +24,13 @@ export async function GET(request: NextRequest) {
   const keyword = searchParams.get('keyword')?.trim();
 
   const where: Record<string, unknown> = {};
-  // 学生仅看已发布；教师看自己全部
-  if (user!.role === 'STUDENT') {
+  if (!maybeUser || maybeUser.role === 'STUDENT') {
+    // 匿名用户和学生只能看已发布
     where.status = CourseStatus.PUBLISHED;
-  } else if (user!.role === 'TEACHER') {
-    where.teacherId = user!.id;
+  } else if (maybeUser.role === 'TEACHER') {
+    where.teacherId = maybeUser.id;
   }
-  // ADMIN 看全部
+  // ADMIN 看全部，不设置 status 过滤
   if (grade) where.grade = Number(grade);
   if (subjectId) where.subjectId = Number(subjectId);
   if (boardType) where.boardType = boardType;

@@ -296,7 +296,15 @@ export default function DashboardPage() {
 
   const subjectRadar = useMemo(() => {
     const weights = behavior?.behaviorSummary?.subjectWeights ?? {};
-    const names: Record<number, string> = { 1: '语文', 2: '数学', 3: '英语', 4: '物理', 5: '化学', 6: '生物', 7: '历史', 8: '地理', 9: '政治' };
+    const names: Record<number, string> = {
+      // 小学
+      101: '小学语文', 102: '小学数学', 103: '小学英语', 104: '小学科学', 105: '道法',
+      // 初中
+      1: '语文', 2: '数学', 3: '英语', 4: '物理', 5: '化学', 6: '生物', 7: '历史', 8: '地理', 9: '政治',
+      // 高中
+      201: '高中语文', 202: '高中数学', 203: '高中英语', 204: '高中物理', 205: '高中化学',
+      206: '高中生物', 207: '高中历史', 208: '高中地理', 209: '高中政治',
+    };
     const arr = Object.entries(weights).map(([id, v]) => ({
       name: names[Number(id)] ?? `学科${id}`,
       value: typeof v === 'number' ? v : Number(v) || 0,
