@@ -2,7 +2,7 @@
   "framework": "nextjs",
   "buildCommand": "prisma generate && (if [ -n \"$DATABASE_URL\" ] && ! echo \"$DATABASE_URL\" | grep -qE \"localhost|127\\.0\\.0\\.1\"; then prisma migrate deploy; else echo \"[vercel] 无云数据库配置(localhost 或未配置)，跳过数据库迁移\"; fi) && next build",
   "installCommand": "npm install",
-  "regions": ["sgp1"],
+  "regions": ["hkg1"],
   "github": {
     "silent": true
   }
