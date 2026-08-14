@@ -1,6 +1,6 @@
 {
   "framework": "nextjs",
-  "buildCommand": "prisma generate && prisma migrate deploy && next build",
+  "buildCommand": "prisma generate && (if [ -n \"$DATABASE_URL\" ]; then prisma migrate deploy; else echo \"[vercel] DATABASE_URL 未配置，跳过数据库迁移\"; fi) && next build",
   "installCommand": "npm install",
   "regions": ["sgp1"],
   "github": {
