@@ -245,6 +245,21 @@ const SEED_SOURCES: SeedSource[] = [
 async function main() {
   console.log('🌱 开始预置采集源...\n');
 
+  // 0. 将教师账号升级为 ADMIN（爬虫管理需要管理员权限）
+  console.log('🔑 升级教师账号为管理员...');
+  const admin = await prisma.user.upsert({
+    where: { phone: '13800000001' },
+    update: { role: 'ADMIN' },
+    create: {
+      phone: '13800000001',
+      passwordHash: await import('argon2').then((m) => m.default.hash('teacher123')),
+      nickname: '教研组教师(管理员)',
+      role: 'ADMIN',
+      lastLoginAt: new Date(),
+    },
+  });
+  console.log(`  ✅ 管理员账号: ${admin.phone} (role=${admin.role})\n`);
+
   let created = 0;
   let skipped = 0;
 
