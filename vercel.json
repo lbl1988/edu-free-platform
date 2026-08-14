@@ -3,7 +3,6 @@
   "buildCommand": "prisma generate && prisma migrate deploy && next build",
   "installCommand": "npm install",
   "regions": ["sgp1"],
-  "nodeVersion": "20",
   "github": {
     "silent": true
   }
