@@ -147,7 +147,7 @@ export default function ExamListPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((e) => (
-            <ExamCard key={e.id} exam={e} role={role} />
+            <ExamCard key={e.id} exam={e} role={role} onChanged={loadList} />
           ))}
         </div>
       )}
@@ -155,12 +155,33 @@ export default function ExamListPage() {
   );
 }
 
-function ExamCard({ exam, role }: { exam: ExamItem; role: string | null }) {
+function ExamCard({ exam, role, onChanged }: { exam: ExamItem; role: string | null; onChanged: () => void }) {
   const router = useRouter();
+  const { message } = App.useApp();
   const open = dayjs().isBefore(dayjs(exam.endTime)) && exam.status === 'PUBLISHED';
   const t = TYPE_MAP[exam.examType];
   const s = STATUS_MAP[exam.status] ?? STATUS_MAP[exam.myResult?.status ?? ''] ?? { color: 'default', text: exam.status };
   const mr = exam.myResult;
+
+  async function publishExam() {
+    try {
+      const res = await fetch(`/api/v1/exams/${exam.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: 'PUBLISHED' }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        message.success('考试已发布');
+        onChanged();
+      } else {
+        message.error(d.error?.message ?? '发布失败');
+      }
+    } catch {
+      message.error('网络错误');
+    }
+  }
 
   return (
     <Card hoverable className="flex flex-col">
@@ -205,6 +226,9 @@ function ExamCard({ exam, role }: { exam: ExamItem; role: string | null }) {
             </>
           ) : role === 'TEACHER' || role === 'ADMIN' ? (
             <>
+              {exam.status === 'DRAFT' && (
+                <Button type="primary" size="small" onClick={publishExam}>发布</Button>
+              )}
               <Button onClick={() => router.push(`/exams/${exam.id}/results`)}>成绩管理</Button>
             </>
           ) : (

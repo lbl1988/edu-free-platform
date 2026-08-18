@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Card, Form, Input, Select, InputNumber, DatePicker, Switch, Button, Table, App, Space, Tag, Typography,
+  Card, Form, Input, Select, InputNumber, DatePicker, Switch, Button, Table, App, Space, Tag, Typography, Radio,
 } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import Link from 'next/link';
@@ -47,7 +47,7 @@ interface FormValues {
 
 export default function ExamCreatePage() {
   const router = useRouter();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const [form] = Form.useForm<FormValues>();
   const [checking, setChecking] = useState(true);
   const [subjects, setSubjects] = useState<SubjectItem[]>([]);
@@ -58,6 +58,7 @@ export default function ExamCreatePage() {
   const [qFilters, setQFilters] = useState({ subjectId: undefined as number | undefined, keyword: '' });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [publishMode, setPublishMode] = useState<'PUBLISHED' | 'DRAFT'>('PUBLISHED');
 
   // 权限检查：仅教师/管理员
   useEffect(() => {
@@ -131,6 +132,17 @@ export default function ExamCreatePage() {
       message.warning('请至少选择一道题目');
       return;
     }
+    // 发布确认弹窗
+    const confirmed = await modal.confirm({
+      title: publishMode === 'PUBLISHED' ? '确认发布该考试？' : '保存为草稿？',
+      content: publishMode === 'PUBLISHED'
+        ? '发布后，学生将在"在线考试"中看到该考试，并可在进入时段内参加。'
+        : '草稿仅你和管理员可见，学生无法查看；之后可在考试列表中点击"发布"上线。',
+      okText: publishMode === 'PUBLISHED' ? '确认发布' : '保存草稿',
+      cancelText: '再检查一下',
+    });
+    if (!confirmed) return;
+
     setSaving(true);
     try {
       const res = await fetch('/api/v1/exams', {
@@ -149,12 +161,13 @@ export default function ExamCreatePage() {
           aiAutoGrade: values.aiAutoGrade,
           retryAllowed: values.retryAllowed,
           passScore: values.passScore,
+          status: publishMode,
           fromQuestionIds: selectedIds,
         }),
       });
       const d = await res.json();
       if (d.success) {
-        message.success('考试创建成功');
+        message.success(publishMode === 'PUBLISHED' ? '考试已发布，学生可参加' : '草稿已保存');
         router.push('/exams');
       } else {
         message.error(d.error?.message ?? '创建失败');
@@ -164,6 +177,15 @@ export default function ExamCreatePage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  // 提交按钮点击：未选题时给出明确提示（不静默禁用）
+  function onSubmitClick() {
+    if (selectedIds.length === 0) {
+      message.warning('请先在右侧勾选至少一道题目');
+      return;
+    }
+    form.submit();
   }
 
   if (checking) {
@@ -307,18 +329,39 @@ export default function ExamCreatePage() {
             ]}
           />
 
-          <div className="mt-4 flex justify-end">
-            <Space>
-              <Button onClick={() => router.push('/exams')}>取消</Button>
-              <Button
-                type="primary"
-                loading={saving}
-                onClick={() => form.submit()}
-                disabled={selectedIds.length === 0}
-              >
-                创建考试（{selectedIds.length} 题）
-              </Button>
+          <div className="mt-4 border-t pt-4">
+            <Space className="mb-3" wrap>
+              <Radio.Group
+                value={publishMode}
+                onChange={(e) => setPublishMode(e.target.value)}
+                optionType="button"
+                buttonStyle="solid"
+                options={[
+                  { label: '立即发布', value: 'PUBLISHED' },
+                  { label: '保存草稿', value: 'DRAFT' },
+                ]}
+              />
+              <Typography.Text type="secondary" className="text-xs">
+                {publishMode === 'PUBLISHED'
+                  ? '发布后学生立即可见并可参加'
+                  : '草稿仅自己可见，可在考试列表中稍后发布'}
+              </Typography.Text>
             </Space>
+            <div className="flex justify-end">
+              <Space>
+                <Button onClick={() => router.push('/exams')}>取消</Button>
+                <Button
+                  type="primary"
+                  size="large"
+                  loading={saving}
+                  onClick={onSubmitClick}
+                >
+                  {publishMode === 'PUBLISHED'
+                    ? `确认发布（${selectedIds.length} 题）`
+                    : '保存草稿'}
+                </Button>
+              </Space>
+            </div>
           </div>
         </Card>
       </div>
