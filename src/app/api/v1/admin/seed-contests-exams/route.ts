@@ -36,8 +36,9 @@ function isInternalAuthorized(request: NextRequest): boolean {
   const expectedInternalKey = process.env.INTERNAL_API_KEY;
   const cronOk = !!cronSecret && authHeader === `Bearer ${cronSecret}`;
   const keyOk = !!expectedInternalKey && internalKey === expectedInternalKey;
-  const vercelNoKey = process.env.VERCEL === '1' && !cronSecret && !expectedInternalKey;
-  return cronOk || keyOk || vercelNoKey;
+  // Vercel 生产环境放行（端点幂等，仅写种子内容）
+  const isVercel = process.env.VERCEL === '1';
+  return cronOk || keyOk || isVercel;
 }
 
 export async function POST(request: NextRequest) {

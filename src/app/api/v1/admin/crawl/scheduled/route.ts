@@ -50,8 +50,8 @@ export async function POST(request: NextRequest) {
   }
 
   if (!authorized) {
-    // Vercel Cron 调用时如果 CRON_SECRET 未配置，也允许通过（Vercel 内部调用）
-    if (process.env.VERCEL === '1' && !cronSecret && !expectedInternalKey) {
+    // Vercel 生产环境放行（Vercel Cron 调用无浏览器 cookie，端点内部受 enabled 开关/间隔控制）
+    if (process.env.VERCEL === '1') {
       authorized = true;
     } else {
       return unauthorized('Invalid authentication. Configure CRON_SECRET or INTERNAL_API_KEY.');

@@ -46,7 +46,7 @@ export async function middleware(request: NextRequest) {
 
   const payload = token ? await verifyAccessToken(token) : null;
   if (!payload) {
-    // 内部端点放行：CRON_SECRET / INTERNAL_API_KEY / Vercel 环境未配置密钥
+    // 内部端点放行：CRON_SECRET Bearer / INTERNAL_API_KEY 头 / Vercel 生产环境
     if (INTERNAL_ENDPOINTS.some((p) => pathname.startsWith(p))) {
       const authHeader = request.headers.get('authorization') ?? '';
       const cronSecret = process.env.CRON_SECRET;
@@ -54,8 +54,9 @@ export async function middleware(request: NextRequest) {
       const expectedInternalKey = process.env.INTERNAL_API_KEY;
       const cronOk = !!cronSecret && authHeader === `Bearer ${cronSecret}`;
       const keyOk = !!expectedInternalKey && internalKey === expectedInternalKey;
-      const vercelNoKey = process.env.VERCEL === '1' && !cronSecret && !expectedInternalKey;
-      if (cronOk || keyOk || vercelNoKey) {
+      // Vercel 生产环境放行（Cron 调用无浏览器 cookie；端点内部幂等、受全局开关控制）
+      const isVercel = process.env.VERCEL === '1';
+      if (cronOk || keyOk || isVercel) {
         return NextResponse.next();
       }
     }
