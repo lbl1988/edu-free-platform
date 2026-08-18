@@ -8,6 +8,7 @@ export const maxDuration = 300;
 
 /**
  * POST /api/v1/admin/seed-contests-exams
+ * GET  /api/v1/admin/seed-contests-exams （浏览器地址栏直接访问即可触发）
  *
  * 一键填充竞赛 + 考试种子数据（Vercel 无 Shell 访问，用 API 替代 npm run db:seed:contests）。
  *
@@ -33,4 +34,9 @@ export async function POST(request: NextRequest) {
     console.error('seed-contests-exams 失败:', e);
     return fail('SEED_FAILED', `种子执行失败: ${e?.message ?? String(e)}`, 500);
   }
+}
+
+// GET 同样支持：登录管理员后浏览器地址栏直接访问即可触发
+export async function GET(request: NextRequest) {
+  return POST(request);
 }
