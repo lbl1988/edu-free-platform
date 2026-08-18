@@ -7,8 +7,19 @@ const noopTs = path.resolve(__dirname, 'src/lib/_noop.ts');
 
 const nextConfig = {
   reactStrictMode: true,
+  // 原生模块/动态加载包在服务端保持外部依赖，避免 Next.js nft 打包遗漏 prebuilds 二进制
+  serverExternalPackages: ['argon2', 'ioredis', 'minio'],
   experimental: {
     serverActions: { bodySizeLimit: '10mb' },
+    // 显式把 argon2 的预编译二进制纳入部署产物（nft 动态探测路径无法静态分析到）
+    outputFileTracingIncludes: {
+      '/api/**': [
+        './node_modules/argon2/prebuilds/linux-x64/**',
+        './node_modules/argon2/prebuilds/linux-arm64/**',
+        './node_modules/argon2/prebuilds/darwin-x64/**',
+        './node_modules/argon2/prebuilds/darwin-arm64/**',
+      ],
+    },
   },
   webpack: (config, { isServer }) => {
     if (!isServer) {
