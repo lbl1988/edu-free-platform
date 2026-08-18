@@ -12,20 +12,39 @@ export const maxDuration = 300;
  *
  * 一键填充竞赛 + 考试种子数据（Vercel 无 Shell 访问，用 API 替代 npm run db:seed:contests）。
  *
- * 需要 ADMIN 权限。幂等：已存在的竞赛/考试/题目自动跳过。
+ * 鉴权双轨制：
+ * - 管理员登录（cookie/token）→ 正常执行，creatorId 取当前管理员
+ * - 内部调用（CRON_SECRET Bearer / INTERNAL_API_KEY 头 / Vercel 环境未配置密钥）→ 放行，
+ *   creatorId 由种子脚本兜底（自动查找或创建教师账号）
+ *
+ * 幂等：已存在的竞赛/考试/题目自动跳过。
  *
  * 数据内容：
  * - 题库题目：数学/语文/英语/物理/化学/信息技术 + 高中语数英，约 35 道（reviewStatus=REVIEWER_PASSED）
  * - 竞赛：NOI 2026、CSP-J/S 2026、蓝桥杯青少组、全国高中数学联赛、青创赛（含 OJ 题）
  * - 考试：6 场已发布考试（正式/模拟，各学科）
  */
+
+// 内部鉴权：与 /api/v1/admin/crawl/scheduled 一致
+function isInternalAuthorized(request: NextRequest): boolean {
+  const authHeader = request.headers.get('authorization') ?? '';
+  const cronSecret = process.env.CRON_SECRET;
+  const internalKey = request.headers.get('x-internal-api-key');
+  const expectedInternalKey = process.env.INTERNAL_API_KEY;
+  const cronOk = !!cronSecret && authHeader === `Bearer ${cronSecret}`;
+  const keyOk = !!expectedInternalKey && internalKey === expectedInternalKey;
+  const vercelNoKey = process.env.VERCEL === '1' && !cronSecret && !expectedInternalKey;
+  return cronOk || keyOk || vercelNoKey;
+}
+
 export async function POST(request: NextRequest) {
+  // 管理员登录优先；无登录时允许内部调用（creatorId 由种子脚本兜底）
   const [adminUser, err] = await requireAdmin(request);
-  if (err) return err;
-  if (!adminUser) return fail('UNAUTHORIZED', '未登录', 401);
+  if (err && !isInternalAuthorized(request)) return err;
+  const creatorId = adminUser?.id;
 
   try {
-    const result = await seedContestsExams({ creatorId: adminUser.id });
+    const result = await seedContestsExams({ creatorId });
     return ok({
       ...result,
       message: `种子完成：新增题目 ${result.questionsCreated} 道、竞赛 ${result.contestsCreated} 个、考试 ${result.examsCreated} 场（跳过已存在 ${result.questionsSkipped + result.contestsSkipped + result.examsSkipped} 条）`,

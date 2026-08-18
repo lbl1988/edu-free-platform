@@ -21,6 +21,13 @@ const PROTECTED = [
 // 仅管理员路径
 const ADMIN_ONLY = ['/api/v1/ai-gen', '/api/v1/admin'];
 
+// 内部端点：支持 CRON_SECRET Bearer / INTERNAL_API_KEY 头 / Vercel 环境未配置密钥时放行
+// （与 route handler 内部鉴权逻辑保持一致，供 Vercel Cron 与外部 cron 服务调用）
+const INTERNAL_ENDPOINTS = [
+  '/api/v1/admin/crawl/scheduled',
+  '/api/v1/admin/seed-contests-exams',
+];
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -39,6 +46,19 @@ export async function middleware(request: NextRequest) {
 
   const payload = token ? await verifyAccessToken(token) : null;
   if (!payload) {
+    // 内部端点放行：CRON_SECRET / INTERNAL_API_KEY / Vercel 环境未配置密钥
+    if (INTERNAL_ENDPOINTS.some((p) => pathname.startsWith(p))) {
+      const authHeader = request.headers.get('authorization') ?? '';
+      const cronSecret = process.env.CRON_SECRET;
+      const internalKey = request.headers.get('x-internal-api-key');
+      const expectedInternalKey = process.env.INTERNAL_API_KEY;
+      const cronOk = !!cronSecret && authHeader === `Bearer ${cronSecret}`;
+      const keyOk = !!expectedInternalKey && internalKey === expectedInternalKey;
+      const vercelNoKey = process.env.VERCEL === '1' && !cronSecret && !expectedInternalKey;
+      if (cronOk || keyOk || vercelNoKey) {
+        return NextResponse.next();
+      }
+    }
     if (pathname.startsWith('/api/')) {
       return NextResponse.json(
         { success: false, error: { code: 'UNAUTHORIZED', message: '未登录或登录已过期' } },
