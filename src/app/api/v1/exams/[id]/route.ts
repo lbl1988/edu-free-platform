@@ -112,5 +112,33 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
   return ok({ exam: updated });
 }
 
+// DELETE /api/v1/exams/{id} — 删除考试（仅管理员或创建者；级联删除题目快照与成绩，竞赛关联自动置空）
+export async function DELETE(request: NextRequest, { params }: Ctx) {
+  const [user, err] = await requireLogin(request);
+  if (err) return err;
+  if (user!.role !== Role.ADMIN && user!.role !== Role.TEACHER) {
+    return forbidden('仅教师或管理员可删除考试');
+  }
+
+  const exam = await prisma.exam.findUnique({
+    where: { id: params.id },
+    include: { _count: { select: { results: true } }, contestsAsExam: { select: { id: true, title: true } } },
+  });
+  if (!exam) return notFound('考试不存在');
+  if (exam.creatorId !== user!.id && user!.role !== Role.ADMIN) {
+    return forbidden('仅创建者或管理员可删除该考试');
+  }
+
+  // 竞赛仍关联该考试时禁止删除（删除会使竞赛失去考试，需先解除关联）
+  if (exam.contestsAsExam.length > 0) {
+    return badRequest(
+      `该考试已被竞赛「${exam.contestsAsExam[0].title}」关联，请先解除竞赛关联后再删除`,
+    );
+  }
+
+  await prisma.exam.delete({ where: { id: params.id } });
+  return ok({ deleted: true, removedResults: exam._count.results });
+}
+
 export const dynamic = 'force-dynamic';
 

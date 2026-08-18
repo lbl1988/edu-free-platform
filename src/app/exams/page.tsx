@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, Spin, App, Tag, Button, Space, Segmented, Empty, Select } from 'antd';
+import { Card, Spin, App, Tag, Button, Space, Segmented, Empty, Select, Popconfirm } from 'antd';
 import Link from 'next/link';
 import dayjs from 'dayjs';
 
@@ -183,6 +183,44 @@ function ExamCard({ exam, role, onChanged }: { exam: ExamItem; role: string | nu
     }
   }
 
+  async function changeStatus(status: 'ARCHIVED' | 'PUBLISHED') {
+    try {
+      const res = await fetch(`/api/v1/exams/${exam.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        message.success(status === 'ARCHIVED' ? '考试已取消下线' : '考试已重新发布');
+        onChanged();
+      } else {
+        message.error(d.error?.message ?? '操作失败');
+      }
+    } catch {
+      message.error('网络错误');
+    }
+  }
+
+  async function deleteExam() {
+    try {
+      const res = await fetch(`/api/v1/exams/${exam.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const d = await res.json();
+      if (d.success) {
+        message.success(`考试已删除${d.data?.removedResults ? `（连带删除 ${d.data.removedResults} 份成绩记录）` : ''}`);
+        onChanged();
+      } else {
+        message.error(d.error?.message ?? '删除失败');
+      }
+    } catch {
+      message.error('网络错误');
+    }
+  }
+
   return (
     <Card hoverable className="flex flex-col">
       <div className="flex items-start justify-between gap-2 mb-2">
@@ -229,6 +267,29 @@ function ExamCard({ exam, role, onChanged }: { exam: ExamItem; role: string | nu
               {exam.status === 'DRAFT' && (
                 <Button type="primary" size="small" onClick={publishExam}>发布</Button>
               )}
+              {exam.status === 'PUBLISHED' && (
+                <Popconfirm
+                  title="取消发布该考试？"
+                  description="下线后学生将不可见、不可进入，成绩数据保留，可随时重新发布"
+                  okText="取消发布"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={() => changeStatus('ARCHIVED')}
+                >
+                  <Button size="small" danger>取消发布</Button>
+                </Popconfirm>
+              )}
+              {exam.status === 'ARCHIVED' && (
+                <Button size="small" type="primary" ghost onClick={() => changeStatus('PUBLISHED')}>重新发布</Button>
+              )}
+              <Popconfirm
+                title="确定删除该考试？"
+                description={`将永久删除考试及其题目${exam._count.results > 0 ? `、连带删除 ${exam._count.results} 份学生成绩` : ''}，不可恢复`}
+                okText="永久删除"
+                okButtonProps={{ danger: true }}
+                onConfirm={deleteExam}
+              >
+                <Button size="small" danger type="text">删除</Button>
+              </Popconfirm>
               <Button onClick={() => router.push(`/exams/${exam.id}/results`)}>成绩管理</Button>
             </>
           ) : (
