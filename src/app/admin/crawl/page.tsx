@@ -85,6 +85,7 @@ export default function CrawlAdminPage() {
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [scheduleInterval, setScheduleInterval] = useState(6);
   const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [seeding, setSeeding] = useState(false);
 
   const fetchSources = useCallback(async () => {
     try {
@@ -262,10 +263,11 @@ export default function CrawlAdminPage() {
                 message="启用步骤"
                 description={
                   <ol className="list-decimal ml-5 text-sm space-y-1">
-                    <li>在 Render 环境变量中设置 <code>INTERNAL_API_KEY</code> 为一个随机字符串</li>
-                    <li>设置 <code>CRAWL_SCHEDULED_ENABLED=true</code></li>
+                    <li>在 Vercel 环境变量中设置 <code>CRON_SECRET</code> 为随机字符串（Vercel Cron 自动鉴权）</li>
+                    <li>或设置 <code>INTERNAL_API_KEY</code> + <code>CRAWL_SCHEDULED_ENABLED=true</code>（外部 cron 用）</li>
                     <li>设置 <code>CRAWL_SCHEDULED_INTERVAL_HOURS={scheduleInterval}</code></li>
-                    <li>在 cron-job.org 注册定时任务，每小时调用一次上述端点（带 X-Internal-Api-Key 头）</li>
+                    <li>Vercel Cron 已在 vercel.json 中配置，每天 2:00 UTC 自动执行</li>
+                    <li>如需更频繁采集，在 cron-job.org 注册定时任务调用上述端点</li>
                   </ol>
                 }
               />
@@ -549,11 +551,51 @@ export default function CrawlAdminPage() {
           <Alert
             className="mt-4"
             type="warning"
-            message="INTERNAL_API_KEY 环境变量未配置"
-            description="定时采集需要设置 INTERNAL_API_KEY 环境变量才能鉴权。请在 Render 面板 → Environment 中添加该变量，值为任意随机字符串。"
+            message="INTERNAL_API_KEY / CRON_SECRET 环境变量未配置"
+            description="定时采集需要鉴权。Vercel 部署请在环境变量中设置 CRON_SECRET（Vercel Cron 用）或 INTERNAL_API_KEY（外部 cron 用）。"
             showIcon
           />
         )}
+      </Card>
+
+      {/* 快速操作 */}
+      <Card className="mb-6" title="快速操作" size="small">
+        <Space wrap>
+          <Button
+            type="primary"
+            loading={running === 'all'}
+            onClick={() => handleRun()}
+            className="!bg-green-600 !border-green-600"
+          >
+            全部采集
+          </Button>
+          <Button
+            loading={seeding}
+            onClick={async () => {
+              setSeeding(true);
+              try {
+                const res = await fetch('/api/v1/admin/crawl/seed', {
+                  method: 'POST',
+                  credentials: 'include',
+                });
+                const d = await res.json();
+                if (d.success) {
+                  message.success(d.data.message);
+                  fetchSources();
+                } else {
+                  message.error(d.error?.message || '预置失败');
+                }
+              } catch {
+                message.error('网络错误');
+              } finally {
+                setSeeding(false);
+              }
+            }}
+          >
+            预置 53 个采集源
+          </Button>
+          <Button onClick={() => router.push('/courses')}>查看课程</Button>
+        </Space>
       </Card>
 
       <Card>

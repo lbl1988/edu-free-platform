@@ -1,9 +1,15 @@
 {
   "framework": "nextjs",
-  "buildCommand": "prisma generate && next build",
+  "buildCommand": "prisma generate && prisma migrate deploy && next build",
   "installCommand": "npm install",
   "regions": ["hkg1"],
   "github": {
     "silent": true
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/v1/admin/crawl/scheduled",
+      "schedule": "0 2 * * *"
+    }
+  ]
 }

@@ -25,13 +25,15 @@ export async function GET(request: NextRequest) {
   if (err) return err;
 
   // 从环境变量读取默认值
+  const isVercelCron = !!process.env.CRON_SECRET;
+  const isExternalCron = !!process.env.INTERNAL_API_KEY;
   const config = {
-    enabled: process.env.CRAWL_SCHEDULED_ENABLED === 'true',
+    enabled: process.env.CRAWL_SCHEDULED_ENABLED === 'true' || isVercelCron,
     intervalHours: Number(process.env.CRAWL_SCHEDULED_INTERVAL_HOURS || 6),
-    apiKeyConfigured: !!process.env.INTERNAL_API_KEY,
-    cronUrl: process.env.INTERNAL_API_KEY
-      ? `${request.nextUrl.origin}/api/v1/admin/crawl/scheduled`
-      : null,
+    apiKeyConfigured: isVercelCron || isExternalCron,
+    authType: isVercelCron ? 'VERCEL_CRON' : isExternalCron ? 'INTERNAL_KEY' : 'NONE',
+    cronUrl: `${request.nextUrl.origin}/api/v1/admin/crawl/scheduled`,
+    isVercelCron,
   };
 
   return ok(config);
@@ -53,17 +55,17 @@ export async function PUT(request: NextRequest) {
     return fail('BAD_REQUEST', '参数校验失败', 400, parsed.error.flatten());
   }
 
-  // 由于无 SystemConfig 表，配置写回环境变量需要通过 Render 面板
-  // 这里返回需要手动在 Render 设置的环境变量
   return ok({
     ...parsed.data,
-    message: '定时采集配置已记录。请在 Render 环境变量中设置以下变量以使其生效：',
+    message: '定时采集配置已记录。请在 Vercel 环境变量中设置以下变量以使其生效：',
     envVars: {
       CRAWL_SCHEDULED_ENABLED: parsed.data.enabled ? 'true' : 'false',
       CRAWL_SCHEDULED_INTERVAL_HOURS: String(parsed.data.intervalHours),
-      INTERNAL_API_KEY: '<your-secret-key>',
+      CRON_SECRET: '<random-secret-for-vercel-cron>',
+      INTERNAL_API_KEY: '<random-key-for-external-cron>',
     },
     cronUrl: `${request.nextUrl.origin}/api/v1/admin/crawl/scheduled`,
-    cronCommand: `curl -X POST ${request.nextUrl.origin}/api/v1/admin/crawl/scheduled -H "X-Internal-Api-Key: <your-secret-key>"`,
+    vercelCronConfig: 'vercel.json 中已配置每天 2:00 UTC 自动执行',
+    externalCronCommand: `curl -X POST ${request.nextUrl.origin}/api/v1/admin/crawl/scheduled -H "X-Internal-Api-Key: <your-key>"`,
   });
 }
