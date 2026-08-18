@@ -475,3 +475,92 @@ export async function runScheduledCrawl(systemUserId: string): Promise<{
 
   return { processed: due.length, succeeded, failed, details };
 }
+
+// ========== 全局定时调度配置 ==========
+//
+// 持久化方式：ContentSource 表中 name='__SCHEDULE_CONFIG__' 的内部记录，
+// parseConfig 字段存放 { enabled, intervalHours, lastRunAt }。
+// 该记录 status 恒为 PAUSED（不会作为真实采集源被抓取），列表接口会将其过滤。
+// 环境变量作为默认值兜底（数据库无记录时使用）。
+
+export const SCHEDULE_CONFIG_SOURCE_NAME = '__SCHEDULE_CONFIG__';
+
+export interface ScheduleConfig {
+  enabled: boolean;
+  intervalHours: number;
+  lastRunAt: string | null;
+}
+
+function defaultScheduleConfig(): ScheduleConfig {
+  const isVercelCron = !!process.env.CRON_SECRET;
+  return {
+    enabled: process.env.CRAWL_SCHEDULED_ENABLED === 'true' || isVercelCron,
+    intervalHours: Number(process.env.CRAWL_SCHEDULED_INTERVAL_HOURS || 6),
+    lastRunAt: null,
+  };
+}
+
+/** 读取全局定时采集配置（数据库优先，环境变量兜底） */
+export async function getScheduleConfig(): Promise<ScheduleConfig> {
+  const defaults = defaultScheduleConfig();
+  try {
+    const rec = await prisma.contentSource.findFirst({
+      where: { name: SCHEDULE_CONFIG_SOURCE_NAME },
+    });
+    const cfg = (rec?.parseConfig ?? {}) as Partial<ScheduleConfig>;
+    return {
+      enabled: typeof cfg.enabled === 'boolean' ? cfg.enabled : defaults.enabled,
+      intervalHours:
+        typeof cfg.intervalHours === 'number' && cfg.intervalHours > 0
+          ? cfg.intervalHours
+          : defaults.intervalHours,
+      lastRunAt: typeof cfg.lastRunAt === 'string' ? cfg.lastRunAt : null,
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+/** 保存全局定时采集配置（写入数据库内部记录） */
+export async function saveScheduleConfig(config: {
+  enabled: boolean;
+  intervalHours: number;
+  lastRunAt?: string | null;
+}): Promise<ScheduleConfig> {
+  const current = await getScheduleConfig();
+  const next: ScheduleConfig = {
+    enabled: config.enabled,
+    intervalHours: config.intervalHours,
+    lastRunAt: config.lastRunAt !== undefined ? config.lastRunAt : current.lastRunAt,
+  };
+
+  const payload = { enabled: next.enabled, intervalHours: next.intervalHours, lastRunAt: next.lastRunAt };
+  const existing = await prisma.contentSource.findFirst({
+    where: { name: SCHEDULE_CONFIG_SOURCE_NAME },
+  });
+
+  if (existing) {
+    await prisma.contentSource.update({
+      where: { id: existing.id },
+      data: { parseConfig: payload },
+    });
+  } else {
+    await prisma.contentSource.create({
+      data: {
+        name: SCHEDULE_CONFIG_SOURCE_NAME,
+        url: 'internal://schedule-config',
+        sourceType: 'RSS',
+        status: 'PAUSED',
+        parseConfig: payload,
+      },
+    });
+  }
+  return next;
+}
+
+/** 计算下次触发执行的时间（当前时间 + 间隔，未到期则为 lastRunAt + 间隔） */
+export function calcNextRunAt(config: ScheduleConfig, now = new Date()): Date {
+  if (!config.lastRunAt) return now;
+  const last = new Date(config.lastRunAt).getTime();
+  return new Date(last + config.intervalHours * 60 * 60 * 1000);
+}

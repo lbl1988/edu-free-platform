@@ -3,10 +3,11 @@ import { prisma } from '@/lib/prisma';
 import { requireAdmin } from '@/lib/guards';
 import { ok, fail, okPaginated } from '@/lib/api-response';
 import { z } from 'zod';
+import { SCHEDULE_CONFIG_SOURCE_NAME } from '@/lib/crawler';
 
 export const dynamic = 'force-dynamic';
 
-// GET: 列出所有采集源
+// GET: 列出所有采集源（排除内部调度配置记录）
 export async function GET(request: NextRequest) {
   const [user, err] = await requireAdmin(request);
   if (err) return err;
@@ -16,7 +17,10 @@ export async function GET(request: NextRequest) {
   const limit = Number(url.searchParams.get('limit') || 50);
   const status = url.searchParams.get('status');
 
-  const where = status ? { status: status as any } : {};
+  const where = {
+    ...(status ? { status: status as any } : {}),
+    name: { not: SCHEDULE_CONFIG_SOURCE_NAME },
+  };
 
   const [sources, total] = await Promise.all([
     prisma.contentSource.findMany({

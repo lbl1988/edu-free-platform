@@ -81,11 +81,15 @@ export default function CrawlAdminPage() {
     intervalHours: 6,
     apiKeyConfigured: false,
     cronUrl: null as string | null,
+    lastRunAt: null as string | null,
+    nextRunAt: null as string | null,
+    triggerNote: '' as string,
   });
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [scheduleInterval, setScheduleInterval] = useState(6);
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const fetchSources = useCallback(async () => {
     try {
@@ -229,51 +233,42 @@ export default function CrawlAdminPage() {
       });
       const d = await res.json();
       if (d.success) {
-        message.success('定时采集配置已保存。请按提示在 Render 环境变量中设置相关变量。');
-        // 显示配置详情
-        Modal.info({
-          title: '定时采集配置说明',
-          width: 600,
-          content: (
-            <div className="space-y-3">
-              <Alert
-                type={scheduleEnabled ? 'success' : 'warning'}
-                message={scheduleEnabled ? '定时采集已启用' : '定时采集已关闭'}
-                description={scheduleEnabled ? '系统将按设定间隔自动采集到期采集源' : '需要手动触发采集'}
-              />
-              <Descriptions column={1} bordered size="small">
-                <Descriptions.Item label="采集间隔">{scheduleInterval} 小时</Descriptions.Item>
-                <Descriptions.Item label="INTERNAL_API_KEY">
-                  {scheduleConfig.apiKeyConfigured ? (
-                    <Tag color="green">已配置</Tag>
-                  ) : (
-                    <Tag color="red">未配置（定时采集无法工作）</Tag>
-                  )}
-                </Descriptions.Item>
-                {scheduleConfig.cronUrl && (
-                  <Descriptions.Item label="定时采集端点">
-                    <Typography.Text copyable className="text-xs">
-                      {scheduleConfig.cronUrl}
-                    </Typography.Text>
-                  </Descriptions.Item>
-                )}
-              </Descriptions>
-              <Alert
-                type="info"
-                message="启用步骤"
-                description={
-                  <ol className="list-decimal ml-5 text-sm space-y-1">
-                    <li>在 Vercel 环境变量中设置 <code>CRON_SECRET</code> 为随机字符串（Vercel Cron 自动鉴权）</li>
-                    <li>或设置 <code>INTERNAL_API_KEY</code> + <code>CRAWL_SCHEDULED_ENABLED=true</code>（外部 cron 用）</li>
-                    <li>设置 <code>CRAWL_SCHEDULED_INTERVAL_HOURS={scheduleInterval}</code></li>
-                    <li>Vercel Cron 已在 vercel.json 中配置，每天 2:00 UTC 自动执行</li>
-                    <li>如需更频繁采集，在 cron-job.org 注册定时任务调用上述端点</li>
-                  </ol>
-                }
-              />
-            </div>
-          ),
-        });
+        setScheduleConfig((prev) => ({
+          ...prev,
+          enabled: d.data.enabled,
+          intervalHours: d.data.intervalHours,
+          lastRunAt: d.data.lastRunAt ?? prev.lastRunAt,
+          nextRunAt: d.data.nextRunAt,
+        }));
+        if (scheduleEnabled) {
+          message.success(`定时采集已启用，间隔 ${scheduleInterval} 小时，配置已生效`);
+        } else {
+          message.success('定时采集已关闭，配置已生效');
+        }
+        // 若间隔不足 24 小时，提示平台触发限制
+        if (scheduleEnabled && scheduleInterval < 24) {
+          Modal.info({
+            title: '关于短间隔定时采集',
+            width: 560,
+            content: (
+              <div className="space-y-2 text-sm">
+                <p>
+                  Vercel 免费版 Cron 每天只会触发一次（当前配置为 UTC 2:00）。间隔小于 24 小时时，
+                  系统按 <b>“距上次执行是否满 {scheduleInterval} 小时”</b> 判断是否真正采集——
+                  已保存生效，但若想按小时级频率执行，还需一个外部定时器按时调用端点：
+                </p>
+                <Typography.Paragraph copyable className="mb-0">
+                  <code className="text-xs">
+                    curl -X POST {scheduleConfig.cronUrl} -H "X-Internal-Api-Key: &lt;INTERNAL_API_KEY&gt;"
+                  </code>
+                </Typography.Paragraph>
+                <p className="text-gray-500">
+                  可在 cron-job.org 等免费服务注册，每分钟/每小时调用一次；未到期时端点会自动跳过，无需担心重复采集。
+                </p>
+              </div>
+            ),
+          });
+        }
       } else {
         message.error(d.error?.message || '保存失败');
       }
@@ -302,6 +297,31 @@ export default function CrawlAdminPage() {
         }
       },
     });
+  }
+
+  // 快速启用/暂停单个采集源
+  async function handleToggleSource(r: ContentSource) {
+    const nextStatus = r.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
+    setTogglingId(r.id);
+    try {
+      const res = await fetch(`/api/v1/admin/crawl/sources/${r.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        message.success(nextStatus === 'ACTIVE' ? `已启用「${r.name}」` : `已暂停「${r.name}」`);
+        fetchSources();
+      } else {
+        message.error(d.error?.message || '操作失败');
+      }
+    } catch {
+      message.error('网络错误');
+    } finally {
+      setTogglingId(null);
+    }
   }
 
   const sourceColumns: ColumnsType<ContentSource> = [
@@ -342,7 +362,26 @@ export default function CrawlAdminPage() {
       dataIndex: 'status',
       key: 'status',
       width: 90,
-      render: (v) => <Tag color={STATUS_COLORS[v] || 'default'}>{v}</Tag>,
+      render: (v, r) => (
+        <Space size={4}>
+          <Tag color={STATUS_COLORS[v] || 'default'}>{v}</Tag>
+        </Space>
+      ),
+    },
+    {
+      title: '自动采集',
+      key: 'autoSwitch',
+      width: 110,
+      render: (_, r) => (
+        <Switch
+          size="small"
+          checked={r.status === 'ACTIVE'}
+          loading={togglingId === r.id}
+          onChange={() => handleToggleSource(r)}
+          checkedChildren="开"
+          unCheckedChildren="关"
+        />
+      ),
     },
     {
       title: '已采集',
@@ -520,9 +559,26 @@ export default function CrawlAdminPage() {
             />
           </div>
 
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">上次执行</span>
+              <span className="text-sm font-medium">
+                {scheduleConfig.lastRunAt ? new Date(scheduleConfig.lastRunAt).toLocaleString('zh-CN') : '从未执行'}
+              </span>
+            </div>
+            {scheduleEnabled && scheduleConfig.nextRunAt && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">下次执行</span>
+                <span className="text-sm text-blue-600 font-medium">
+                  {new Date(scheduleConfig.nextRunAt).toLocaleString('zh-CN')}
+                </span>
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-600">API Key</span>
-            <Tag color={scheduleConfig.apiKeyConfigured ? 'green' : 'red'}>
+            <Tag color={scheduleConfig.apiKeyConfigured ? 'green' : 'orange'}>
               {scheduleConfig.apiKeyConfigured ? '已配置' : '未配置'}
             </Tag>
           </div>
@@ -532,7 +588,7 @@ export default function CrawlAdminPage() {
             loading={scheduleSaving}
             onClick={handleSaveSchedule}
           >
-            保存配置
+            保存并生效
           </Button>
 
           {scheduleConfig.cronUrl && (
@@ -547,15 +603,16 @@ export default function CrawlAdminPage() {
           )}
         </div>
 
-        {!scheduleConfig.apiKeyConfigured && (
-          <Alert
-            className="mt-4"
-            type="warning"
-            message="INTERNAL_API_KEY / CRON_SECRET 环境变量未配置"
-            description="定时采集需要鉴权。Vercel 部署请在环境变量中设置 CRON_SECRET（Vercel Cron 用）或 INTERNAL_API_KEY（外部 cron 用）。"
-            showIcon
-          />
-        )}
+        <Alert
+          className="mt-4"
+          type="info"
+          message="调度说明"
+          description={
+            scheduleConfig.triggerNote ||
+            '配置保存在数据库中，保存后立即生效。Vercel Cron 每天 UTC 2:00 触发，按设定间隔自动判断是否执行；间隔小于 24 小时时建议用外部 cron 服务高频调用端点（未到期会自动跳过）。'
+          }
+          showIcon
+        />
       </Card>
 
       {/* 快速操作 */}
