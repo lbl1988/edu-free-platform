@@ -205,8 +205,7 @@ function ExamCard({ exam, role }: { exam: ExamItem; role: string | null }) {
             </>
           ) : role === 'TEACHER' || role === 'ADMIN' ? (
             <>
-              <Button onClick={() => router.push(`/exams/${exam.id}/results`)}>成绩</Button>
-              <Button onClick={() => router.push(`/exams/${exam.id}/edit`)}>管理</Button>
+              <Button onClick={() => router.push(`/exams/${exam.id}/results`)}>成绩管理</Button>
             </>
           ) : (
             <Button type="primary" disabled>登录后参加</Button>

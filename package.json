@@ -15,7 +15,8 @@
     "prisma:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:core": "tsx prisma/seed-core-content.ts",
-    "db:seed:crawl": "tsx prisma/seed-crawl-sources.ts"
+    "db:seed:crawl": "tsx prisma/seed-crawl-sources.ts",
+    "db:seed:contests": "tsx prisma/seed-contests-exams.ts"
   },
   "dependencies": {
     "@ant-design/nextjs-registry": "^1.0.0",
