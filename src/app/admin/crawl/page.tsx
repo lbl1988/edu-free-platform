@@ -6,6 +6,7 @@ import Link from 'next/link';
 import {
   Card, Table, Button, Tag, Modal, Form, Input, Select, InputNumber,
   Switch, message, App, Tabs, Spin, Empty, Statistic, Row, Col, Descriptions, Space,
+  Alert, Typography, Tooltip,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 
@@ -74,6 +75,17 @@ export default function CrawlAdminPage() {
   const [jobDetail, setJobDetail] = useState<CrawlJobRow | null>(null);
   const [form] = Form.useForm();
 
+  // 定时采集配置
+  const [scheduleConfig, setScheduleConfig] = useState({
+    enabled: false,
+    intervalHours: 6,
+    apiKeyConfigured: false,
+    cronUrl: null as string | null,
+  });
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleInterval, setScheduleInterval] = useState(6);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+
   const fetchSources = useCallback(async () => {
     try {
       const res = await fetch('/api/v1/admin/crawl/sources?limit=100', { credentials: 'include' });
@@ -95,7 +107,21 @@ export default function CrawlAdminPage() {
   }, [message]);
 
   useEffect(() => {
-    Promise.all([fetchSources(), fetchJobs()]).finally(() => setLoading(false));
+    Promise.all([
+      fetchSources(),
+      fetchJobs(),
+      // 获取定时采集配置
+      fetch('/api/v1/admin/crawl/config', { credentials: 'include' })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success && d.data) {
+            setScheduleConfig(d.data);
+            setScheduleEnabled(d.data.enabled);
+            setScheduleInterval(d.data.intervalHours);
+          }
+        })
+        .catch(() => {}),
+    ]).finally(() => setLoading(false));
   }, [fetchSources, fetchJobs]);
 
   async function handleRun(sourceId?: string) {
@@ -188,6 +214,71 @@ export default function CrawlAdminPage() {
       }
     } catch {
       // form validation error
+    }
+  }
+
+  async function handleSaveSchedule() {
+    setScheduleSaving(true);
+    try {
+      const res = await fetch('/api/v1/admin/crawl/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ enabled: scheduleEnabled, intervalHours: scheduleInterval }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        message.success('定时采集配置已保存。请按提示在 Render 环境变量中设置相关变量。');
+        // 显示配置详情
+        Modal.info({
+          title: '定时采集配置说明',
+          width: 600,
+          content: (
+            <div className="space-y-3">
+              <Alert
+                type={scheduleEnabled ? 'success' : 'warning'}
+                message={scheduleEnabled ? '定时采集已启用' : '定时采集已关闭'}
+                description={scheduleEnabled ? '系统将按设定间隔自动采集到期采集源' : '需要手动触发采集'}
+              />
+              <Descriptions column={1} bordered size="small">
+                <Descriptions.Item label="采集间隔">{scheduleInterval} 小时</Descriptions.Item>
+                <Descriptions.Item label="INTERNAL_API_KEY">
+                  {scheduleConfig.apiKeyConfigured ? (
+                    <Tag color="green">已配置</Tag>
+                  ) : (
+                    <Tag color="red">未配置（定时采集无法工作）</Tag>
+                  )}
+                </Descriptions.Item>
+                {scheduleConfig.cronUrl && (
+                  <Descriptions.Item label="定时采集端点">
+                    <Typography.Text copyable className="text-xs">
+                      {scheduleConfig.cronUrl}
+                    </Typography.Text>
+                  </Descriptions.Item>
+                )}
+              </Descriptions>
+              <Alert
+                type="info"
+                message="启用步骤"
+                description={
+                  <ol className="list-decimal ml-5 text-sm space-y-1">
+                    <li>在 Render 环境变量中设置 <code>INTERNAL_API_KEY</code> 为一个随机字符串</li>
+                    <li>设置 <code>CRAWL_SCHEDULED_ENABLED=true</code></li>
+                    <li>设置 <code>CRAWL_SCHEDULED_INTERVAL_HOURS={scheduleInterval}</code></li>
+                    <li>在 cron-job.org 注册定时任务，每小时调用一次上述端点（带 X-Internal-Api-Key 头）</li>
+                  </ol>
+                }
+              />
+            </div>
+          ),
+        });
+      } else {
+        message.error(d.error?.message || '保存失败');
+      }
+    } catch {
+      message.error('网络错误');
+    } finally {
+      setScheduleSaving(false);
     }
   }
 
@@ -386,13 +477,84 @@ export default function CrawlAdminPage() {
         <Col xs={12} md={6}>
           <Card>
             <Statistic
-              title="定时采集状态"
-              value={process.env.NEXT_PUBLIC_CRAWL_ENABLED ? '已启用' : '待配置'}
-              valueStyle={{ color: '#3B82F6' }}
+              title="定时采集"
+              value={scheduleConfig.enabled ? '已启用' : '未启用'}
+              valueStyle={{ color: scheduleConfig.enabled ? '#10B981' : '#9CA3AF' }}
             />
           </Card>
         </Col>
       </Row>
+
+      {/* 定时采集配置面板 */}
+      <Card className="mb-6" title="定时采集配置" size="small">
+        <div className="flex flex-wrap items-center gap-6">
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-600">启用定时采集</span>
+            <Switch
+              checked={scheduleEnabled}
+              onChange={setScheduleEnabled}
+              checkedChildren="开"
+              unCheckedChildren="关"
+            />
+            <Tag color={scheduleEnabled ? 'green' : 'default'}>
+              {scheduleEnabled ? '自动运行中' : '手动模式'}
+            </Tag>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-600">采集间隔</span>
+            <Select
+              value={scheduleInterval}
+              onChange={setScheduleInterval}
+              style={{ width: 120 }}
+              options={[
+                { label: '每 1 小时', value: 1 },
+                { label: '每 3 小时', value: 3 },
+                { label: '每 6 小时', value: 6 },
+                { label: '每 12 小时', value: 12 },
+                { label: '每 24 小时', value: 24 },
+                { label: '每 48 小时', value: 48 },
+              ]}
+            />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-600">API Key</span>
+            <Tag color={scheduleConfig.apiKeyConfigured ? 'green' : 'red'}>
+              {scheduleConfig.apiKeyConfigured ? '已配置' : '未配置'}
+            </Tag>
+          </div>
+
+          <Button
+            type="primary"
+            loading={scheduleSaving}
+            onClick={handleSaveSchedule}
+          >
+            保存配置
+          </Button>
+
+          {scheduleConfig.cronUrl && (
+            <Tooltip title="点击复制定时采集端点 URL">
+              <Typography.Text
+                copyable
+                className="text-xs text-gray-500"
+              >
+                {scheduleConfig.cronUrl}
+              </Typography.Text>
+            </Tooltip>
+          )}
+        </div>
+
+        {!scheduleConfig.apiKeyConfigured && (
+          <Alert
+            className="mt-4"
+            type="warning"
+            message="INTERNAL_API_KEY 环境变量未配置"
+            description="定时采集需要设置 INTERNAL_API_KEY 环境变量才能鉴权。请在 Render 面板 → Environment 中添加该变量，值为任意随机字符串。"
+            showIcon
+          />
+        )}
+      </Card>
 
       <Card>
         <Tabs
