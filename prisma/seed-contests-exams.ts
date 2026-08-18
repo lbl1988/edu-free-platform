@@ -390,7 +390,7 @@ const EXAMS: SeedExam[] = [
 ];
 
 // ---------------- 主逻辑 ----------------
-export interface SeedResult {
+export interface StepResult {
   questionsCreated: number;
   questionsSkipped: number;
   contestsCreated: number;
@@ -399,13 +399,11 @@ export interface SeedResult {
   examsSkipped: number;
 }
 
-export async function main(opts?: { creatorId?: string }): Promise<SeedResult> {
-  const result: SeedResult = { questionsCreated: 0, questionsSkipped: 0, contestsCreated: 0, contestsSkipped: 0, examsCreated: 0, examsSkipped: 0 };
+export type SeedStep = 'questions' | 'contests' | 'exams' | 'all';
 
-  // 0. 学科
-  await ensureSubjects();
-
-  // 1. 题目（幂等：同学科 + 题干 查重）
+// Step 1: 题目（幂等：同学科 + 题干 查重）
+export async function seedQuestions() {
+  const result = { created: 0, skipped: 0 };
   const questionPool: SeedQuestion[] = [];
   const questionIdByContent = new Map<string, string>();
   for (const q of QUESTIONS) {
@@ -429,42 +427,43 @@ export async function main(opts?: { creatorId?: string }): Promise<SeedResult> {
         },
       });
       existing = { id: created.id };
-      result.questionsCreated++;
+      result.created++;
     } else {
-      result.questionsSkipped++;
+      result.skipped++;
     }
     questionIdByContent.set(q.content, existing.id);
     questionPool.push(q);
   }
+  return { result, questionPool, questionIdByContent };
+}
 
-  // 2. 创建者：优先传入的 creatorId（API 触发时=当前管理员），否则找 ADMIN/TEACHER
-  let creatorId = opts?.creatorId;
-  if (!creatorId) {
-    const creator = await prisma.user.findFirst({
-      where: { deletedAt: null, role: { in: [Role.ADMIN, Role.TEACHER] } },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true },
-    });
-    creatorId = creator?.id;
-  }
-  if (!creatorId) {
-    // 兜底：创建一个默认教师账号
-    const teacher = await prisma.user.create({
-      data: {
-        phone: '13800009999',
-        passwordHash: 'disabled',
-        nickname: '默认教师',
-        role: Role.TEACHER,
-      },
-    });
-    creatorId = teacher.id;
-  }
+// 创建者解析：优先传入的 creatorId，否则找 ADMIN/TEACHER，再兜底创建默认教师
+export async function resolveCreator(creatorId?: string): Promise<string> {
+  if (creatorId) return creatorId;
+  const creator = await prisma.user.findFirst({
+    where: { deletedAt: null, role: { in: [Role.ADMIN, Role.TEACHER] } },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  });
+  if (creator) return creator.id;
+  const teacher = await prisma.user.create({
+    data: {
+      phone: '13800009999',
+      passwordHash: 'disabled',
+      nickname: '默认教师',
+      role: Role.TEACHER,
+    },
+  });
+  return teacher.id;
+}
 
-  // 3. 竞赛 + OJ 题（幂等：按标题查重）
+// Step 2: 竞赛 + OJ 题（幂等：按标题查重）
+export async function seedContests(creatorId: string) {
+  const result = { created: 0, skipped: 0 };
   for (const c of CONTESTS) {
     const existing = await prisma.contest.findFirst({ where: { title: c.title }, select: { id: true } });
     if (existing) {
-      result.contestsSkipped++;
+      result.skipped++;
       continue;
     }
     const contest = await prisma.contest.create({
@@ -501,14 +500,22 @@ export async function main(opts?: { creatorId?: string }): Promise<SeedResult> {
         })),
       });
     }
-    result.contestsCreated++;
+    result.created++;
   }
+  return result;
+}
 
-  // 4. 考试 + 题目快照（幂等：按标题查重）
+// Step 3: 考试 + 题目快照（幂等：按标题查重）
+export async function seedExams(
+  creatorId: string,
+  questionPool: SeedQuestion[],
+  questionIdByContent: Map<string, string>,
+) {
+  const result = { created: 0, skipped: 0 };
   for (const e of EXAMS) {
     const existing = await prisma.exam.findFirst({ where: { title: e.title }, select: { id: true } });
     if (existing) {
-      result.examsSkipped++;
+      result.skipped++;
       continue;
     }
     const picked = questionPool.filter(e.questionFilter);
@@ -548,7 +555,52 @@ export async function main(opts?: { creatorId?: string }): Promise<SeedResult> {
         })),
       });
     }
-    result.examsCreated++;
+    result.created++;
+  }
+  return result;
+}
+
+export async function main(opts?: { creatorId?: string; step?: SeedStep }): Promise<StepResult> {
+  const result: StepResult = { questionsCreated: 0, questionsSkipped: 0, contestsCreated: 0, contestsSkipped: 0, examsCreated: 0, examsSkipped: 0 };
+  const step = opts?.step ?? 'all';
+
+  // 0. 学科
+  await ensureSubjects();
+
+  // 1. 题目
+  let questionPool: SeedQuestion[] = [];
+  let questionIdByContent = new Map<string, string>();
+  if (step === 'all' || step === 'questions') {
+    const qs = await seedQuestions();
+    result.questionsCreated = qs.result.created;
+    result.questionsSkipped = qs.result.skipped;
+    questionPool = qs.questionPool;
+    questionIdByContent = qs.questionIdByContent;
+  }
+
+  // 2. 创建者
+  const creatorId = await resolveCreator(opts?.creatorId);
+
+  // 3. 竞赛
+  if (step === 'all' || step === 'contests') {
+    const cs = await seedContests(creatorId);
+    result.contestsCreated = cs.created;
+    result.contestsSkipped = cs.skipped;
+  }
+
+  // 4. 考试（依赖题目池）
+  if (step === 'all' || step === 'exams') {
+    // 考试步骤可能单独执行，此时重新加载题目池
+    if (questionPool.length === 0) {
+      const qs = await seedQuestions();
+      result.questionsCreated += qs.result.created;
+      result.questionsSkipped += qs.result.skipped;
+      questionPool = qs.questionPool;
+      questionIdByContent = qs.questionIdByContent;
+    }
+    const es = await seedExams(creatorId, questionPool, questionIdByContent);
+    result.examsCreated = es.created;
+    result.examsSkipped = es.skipped;
   }
 
   return result;

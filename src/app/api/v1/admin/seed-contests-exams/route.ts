@@ -1,7 +1,10 @@
 import { NextRequest } from 'next/server';
 import { requireAdmin } from '@/lib/guards';
 import { ok, fail } from '@/lib/api-response';
-import { main as seedContestsExams } from '../../../../../../prisma/seed-contests-exams';
+import {
+  main as seedContestsExams,
+  type SeedStep,
+} from '../../../../../../prisma/seed-contests-exams';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -43,11 +46,19 @@ export async function POST(request: NextRequest) {
   if (err && !isInternalAuthorized(request)) return err;
   const creatorId = adminUser?.id;
 
+  // 支持分步执行（Vercel Hobby 函数限 60s，全量可能超时）：
+  // ?step=questions | contests | exams | all（默认 all，分批时建议按顺序调用）
+  const stepParam = new URL(request.url).searchParams.get('step') ?? 'all';
+  const steps: SeedStep[] = ['all', 'questions', 'contests', 'exams'];
+  const step: SeedStep = (steps as string[]).includes(stepParam) ? (stepParam as SeedStep) : 'all';
+
   try {
-    const result = await seedContestsExams({ creatorId });
+    const result = await seedContestsExams({ creatorId, step });
+    const done = (n: number) => (n > 0 ? `新增 ${n}` : `跳过 ${n}`);
     return ok({
       ...result,
-      message: `种子完成：新增题目 ${result.questionsCreated} 道、竞赛 ${result.contestsCreated} 个、考试 ${result.examsCreated} 场（跳过已存在 ${result.questionsSkipped + result.contestsSkipped + result.examsSkipped} 条）`,
+      step,
+      message: `种子完成(step=${step})：题目 ${done(result.questionsCreated)}/${result.questionsSkipped} 跳过，竞赛 ${done(result.contestsCreated)}，考试 ${done(result.examsCreated)}`,
     });
   } catch (e: any) {
     console.error('seed-contests-exams 失败:', e);
