@@ -1,6 +1,6 @@
 # 全国 K-12 免费教育学习平台
 
-> 完全免费、公益运营的 K-12 在线学习平台，覆盖课堂学科、题库刷题、在线考试、课外知识、竞赛与 OJ、AI 课程问答、推荐看板等模块。
+> 完全免费、公益运营的 K-12 在线学习平台，覆盖课堂学科、题库刷题、在线考试、课外知识、竞赛与 OJ、AI 课程问答、推荐看板、艾宾浩斯复习引擎、苏格拉底 AI 辅导、知识图谱诊断、游戏化激励等模块。
 
 ## 项目简介
 
@@ -10,6 +10,9 @@
 - **匿名友好**：课程中心、题库、考试、课外知识、竞赛五大板块匿名可访问，仅个人记录需登录
 - **未成年人保护**：防沉迷每日学习时长上限、数据软删除、QA 日志采集可关、实名信息脱敏存储
 - **公益运营**：不接受任何付费解锁，所有学习资源对所有用户开放
+- **智能学习闭环**：艾宾浩斯复习引擎 + 知识图谱诊断 + 苏格拉底 AI 辅导，形成「诊断 → 学习 → 练习 → 复习」个性化闭环
+- **游戏化激励体系**：打卡积分 + 连续学习 + 成就徽章 + 学习排行榜，用游戏化机制驱动学习动力
+- **家校共育**：家长端学情报告 + 学习目标 + 学情周报，家长可随时了解子女学习进度
 
 ## 技术栈
 
@@ -18,7 +21,7 @@
 | 前端框架 | Next.js 14（App Router）+ React 18 |
 | 语言 | TypeScript（strict 模式，0 错误门禁） |
 | UI | Ant Design 5 + Tailwind CSS 3 |
-| 数据库 | PostgreSQL 16 + pgvector（第二期 LightRAG 向量检索） |
+| 数据库 | PostgreSQL 16 + pgvector（LightRAG 向量检索） |
 | 缓存 / 限流 | Redis 7 |
 | 对象存储 | MinIO（S3 兼容，视频/课件/转码 HLS） |
 | ORM | Prisma 5 |
@@ -26,22 +29,36 @@
 | 参数校验 | Zod |
 | 部署 | Vercel（香港节点）+ Cron 定时任务 |
 | 图表 | 纯 SVG 手写（Bar/Pie/Radar/Bucket/HorizontalRate） |
+| 间隔重复算法 | 艾宾浩斯曲线（1→2→4→7→15→30 天，连续答对 5 次标记掌握） |
+| AI 辅导提示词 | 苏格拉底式引导（hint/guide/explain 三模式，永不直接给答案） |
 
 ## 功能模块
 
 | 模块 | 路由前缀 | 说明 |
 | --- | --- | --- |
 | 用户中心 | `/api/v1/user`、`/api/v1/register`、`/login`、`/logout`、`/refresh` | 注册/登录/刷新/登出、个人资料、实名认证、家长绑定码、家庭关系、志愿者申请 |
-| 课堂学科 | `/api/v1/subjects`、`/textbooks`、`/lessons/[id]` | 学科 → 教材版本 → 章节树 → 课时（视频+笔记+练习+AI问答） |
-| 题库刷题 | `/api/v1/questions`、`/papers`、`/wrong`、`/favorites` | 多维筛选、RANDOM/SMART/MANUAL 三模式组卷、整卷交卷即时判分、错题本、收藏 |
-| 在线考试 | `/api/v1/exams`、`/exams` | 创建/发布/开始/交卷/作弊上报/主观题批改/成绩查询，管理员可取消/删除（被竞赛关联的考试禁删） |
+| 课堂学科 | `/api/v1/subjects`、`/textbooks`、`/lessons/[id]` | 学科 → 教材版本 → 章节树 → 课时（视频+笔记+练习+AI问答+讨论区） |
+| 题库刷题 | `/api/v1/questions`、`/papers`、`/wrong`、`/favorites` | 多维筛选、三模式组卷、整卷交卷即时判分、错题本、收藏、相似题推荐 |
+| 在线考试 | `/api/v1/exams`、`/exams` | 创建/发布/开始/交卷/作弊上报/主观题批改/成绩查询，管理员可取消/删除 |
 | 课外知识 | `/api/v1/articles`、`/articles` | Article 列表 + 详情，支持点赞 |
-| 竞赛与 OJ | `/api/v1/contests`、`/judge`、`/submissions` | 竞赛报名/题目、OJ 判题（problem/submit/submission/callback，`X-Internal-Api-Key` 校验） |
-| 课程采集爬虫 | `/api/v1/admin/crawl`、`/admin/crawl` | 配置化采集源（RSS/JSON/HTML）、定时调度（持久化生效）、限速、robots.txt 合规、采集任务记录 |
-| AI 课程问答 | `/api/v1/courses/[id]/chat`、`/rag` | LightRAG SSE 流式问答，不可用时降级，支持索引触发与任务状态查询 |
-| 推荐看板 | `/api/v1/recommend`、`/dashboard`、`/analytics` | 规则召回 → RecallItem、个性化推荐、行为画像、考试分析（总览/列表/单场深度） |
+| 竞赛与 OJ | `/api/v1/contests`、`/judge`、`/submissions` | 竞赛报名/题目、OJ 判题（problem/submit/submission/callback） |
+| 课程采集爬虫 | `/api/v1/admin/crawl`、`/admin/crawl` | 配置化采集源、定时调度、限速、robots.txt 合规 |
+| AI 课程问答 | `/api/v1/courses/[id]/chat`、`/rag` | LightRAG SSE 流式问答 + **苏格拉底式引导**（hint/guide/explain）+ **考试期自动关闭** |
+| 推荐看板 | `/api/v1/recommend`、`/dashboard`、`/analytics` | 规则召回、个性化推荐、行为画像、考试分析 |
+| 艾宾浩斯复习引擎 | `/api/v1/wrong/review-due`、`/wrong/[questionId]/review` | 间隔调度（1→2→4→7→15→30 天）、连续答对 5 次标记掌握、到期复习推送 |
+| 错题重组 | `/api/v1/wrong/rebuild-paper`、`/wrong/similar` | 一键重组错题卷、按知识点推荐相似题、错因标签标记 |
+| 知识图谱诊断 | `/api/v1/analytics/mastery`、`/analytics/mastery` | 章节掌握度三色热力图（红/黄/绿）、薄弱知识点专项练习入口 |
+| 家长端 | `/parent`、`/api/v1/user/children` | 子女学习概况、考试成绩、错题列表、薄弱知识点进度、已报名课程 |
+| 学习打卡 | `/api/v1/check-in`、`/api/v1/check-in/status` | 每日打卡、连续天数计算、积分奖励（基础10分+连续7天额外5分） |
+| 错因分析 | `/api/v1/analytics/error-causes` | 按错题标签/学科/错误原因聚合，90天错因分布看板 |
+| 学习目标 | `/api/v1/goals`、`/api/v1/goals/refresh` | 周度/月度目标（时长/答题量/正确率/考试及格）、自动刷新进度、达成标记 |
+| 成就徽章 | `/api/v1/badges`、`/api/v1/badges/check` | 8 枚预设徽章（金/银/铜分级）、自动检查条件颁发、徽章墙展示 |
+| 学情周报 | `/api/v1/analytics/weekly-report` | 本周 vs 上周趋势对比、每日活动分布、考试/打卡/练习统计 |
+| 学习排行榜 | `/api/v1/leaderboard` | 按积分/连续天数/正确率三种排行、前三名金银铜样式、我的排名高亮 |
+| 课程讨论区 | `/api/v1/courses/[id]/discussions`、`/courses/[id]` | 发帖/回复/点赞/置顶、教师学生角色标签、同伴学习互助 |
+| 学习日历 | `/api/v1/calendar`、`/calendar` | 月度日历网格、考试/打卡/练习/目标事件标记、月度统计 |
 
-> 当前共 **61 条 API 路由 + 18 张页面**，全部通过 `tsc --noEmit` 与 `next build` 0 错误。
+> 当前共 **80+ 条 API 路由 + 22 张页面**，全部通过 `tsc --noEmit` 与 `next build` 0 错误。
 
 ## 快速开始（本地开发）
 
@@ -116,23 +133,25 @@ npm run dev
 ```
 edu-free-platform/
 ├── prisma/
-│   ├── schema.prisma              # 数据模型（用户/内容/考试/AI/采集/竞赛域）
-│   ├── migrations/                # 已有 0_init / 1_add_chat_session / 2_add_crawl_system
+│   ├── schema.prisma              # 数据模型（22 个模型：用户/内容/考试/AI/采集/竞赛/复习/徽章/讨论域）
+│   ├── migrations/                # 6 个迁移：0_init 到 6_add_discussions
 │   └── seed*.ts                   # 分步种子脚本
 ├── src/
 │   ├── app/
-│   │   ├── (pages)/               # 18 张页面：首页/登录/注册/课程/题库/考试/竞赛/分析/...
-│   │   ├── api/v1/                # 61 条 API 路由
+│   │   ├── (pages)/               # 22 张页面：新增 /parent /calendar /analytics/mastery
+│   │   ├── api/v1/                # 80+ 条 API 路由
 │   │   ├── admin/crawl/           # 采集源管理页
 │   │   ├── layout.tsx / providers.tsx / page.tsx
 │   ├── lib/
 │   │   ├── prisma.ts              # Prisma 单例
 │   │   ├── redis.ts               # Redis 懒加载 + 限流
 │   │   ├── auth.ts / auth.server.ts  # jose 纯校验 / argon2+prisma+redis
-│   │   ├── lightrag.ts            # LightRAG 客户端（stream/insert/task）
+│   │   ├── lightrag.ts            # LightRAG 客户端
+│   │   ├── spaced-repetition.ts   # 艾宾浩斯间隔算法
+│   │   ├── socratic.ts            # 苏格拉底式 AI 辅导提示词构造器
 │   │   ├── crawler.ts             # 采集器实现
 │   │   ├── minio.ts / api-response.ts / guards.ts / utils.ts
-│   └── middleware.ts              # JWT 校验 + 角色鉴权 + Vercel 环境放行内部端点
+│   └── middleware.ts              # JWT 校验 + 角色鉴权 + Vercel 环境放行
 ├── docker-compose.yml
 ├── vercel.json
 └── .env.example
