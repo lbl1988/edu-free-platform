@@ -6,7 +6,8 @@ import { prisma } from '@/lib/prisma';
 import { requireLogin } from '@/lib/guards';
 import { badRequest, notFound, forbidden, ok } from '@/lib/api-response';
 import { LightRAGUnavailableError, lightrag } from '@/lib/lightrag';
-import { Role, CourseStatus } from '@prisma/client';
+import { buildSocraticPrompt, type SocraticMode } from '@/lib/socratic';
+import { Role, CourseStatus, ExamStatus } from '@prisma/client';
 
 type Ctx = { params: { id: string } };
 
@@ -25,6 +26,8 @@ const ChatSchema = z.object({
   workspace: z.string().optional(),
   stream: z.boolean().optional(),
   sources: z.enum(['personal', 'course', 'all']).optional(),
+  // P0-3：苏格拉底式辅导模式（hint 一点提示 / guide 逐步引导 / explain 详细讲解）
+  mode: z.enum(['hint', 'guide', 'explain']).optional(),
 });
 
 async function appendToSession(
@@ -74,7 +77,7 @@ export async function POST(request: NextRequest, { params }: Ctx): Promise<Respo
   if (!parsed.success) {
     return badRequest(parsed.error.issues[0].message) as unknown as Response;
   }
-  const { q, workspace, sources, stream } = parsed.data;
+  const { q, workspace, sources, stream, mode } = parsed.data;
 
   const course = await prisma.course.findUnique({
     where: { id: params.id },
@@ -98,6 +101,18 @@ export async function POST(request: NextRequest, { params }: Ctx): Promise<Respo
     if (!enrolled) return forbidden('课程未发布') as unknown as Response;
   }
 
+  // P0-3：考试期间关闭 AI 辅导 —— 学生若存在进行中的考试，拒绝作答
+  // 教育原则：考试期间禁止使用 AI 获取答案，保护评估公平性
+  if (user!.role === Role.STUDENT) {
+    const inExam = await prisma.examResult.findFirst({
+      where: { studentId: user!.id, status: ExamStatus.IN_PROGRESS },
+      select: { id: true, examId: true },
+    });
+    if (inExam) {
+      return forbidden('考试期间AI辅导暂不可用，请专注答题') as unknown as Response;
+    }
+  }
+
   const workspaceId = workspace ?? `course-${params.id}`;
   const workspaceParam = sources ? `${workspaceId}?sources=${sources}` : workspaceId;
 
@@ -105,10 +120,13 @@ export async function POST(request: NextRequest, { params }: Ctx): Promise<Respo
   const shouldStream = accept.includes('text/event-stream') || stream === true;
 
   const userMsg = { role: 'user' as const, content: q, ts: new Date().toISOString() };
+  // P0-3：注入苏格拉底式系统提示（不给答案，引导式提问，年级化用语）
+  const socraticMode: SocraticMode = mode ?? 'guide';
+  const finalQuery = buildSocraticPrompt(q, socraticMode, user!.grade ?? undefined);
 
   if (!shouldStream) {
     try {
-      const result = await lightrag.query({ workspaceId, query: q, stream: false });
+      const result = await lightrag.query({ workspaceId, query: finalQuery, stream: false });
       const answerContent = typeof result === 'string'
         ? result
         : (result as { answer?: string }).answer ?? JSON.stringify(result);
@@ -151,7 +169,7 @@ export async function POST(request: NextRequest, { params }: Ctx): Promise<Respo
     const send = (raw: string) => { try { ctrl.enqueue(encoder.encode(raw)); } catch {} };
 
     try {
-      const gen = await lightrag.query({ workspaceId, query: q, stream: true });
+      const gen = await lightrag.query({ workspaceId, query: finalQuery, stream: true });
       for await (const chunk of gen) {
         if (typeof chunk === 'string' && chunk) {
           fullAnswer += chunk;

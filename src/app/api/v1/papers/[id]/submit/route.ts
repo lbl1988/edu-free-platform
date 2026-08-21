@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireLogin } from '@/lib/guards';
 import { ok, notFound, badRequest } from '@/lib/api-response';
+import { scheduleNextReview } from '@/lib/spaced-repetition';
 import { z } from 'zod';
 
 type Ctx = { params: { id: string } };
@@ -187,7 +188,8 @@ export async function POST(request: NextRequest, { params }: Ctx) {
       });
     }
 
-    // 4. 答错题目加入错题本
+    // 4. 答错题目加入错题本，并按艾宾浩斯遗忘曲线排程下次复习（P0-1）
+    const now = new Date();
     for (const g of graded) {
       if (!g.isCorrect) {
         await tx.wrongRecord.upsert({
@@ -197,20 +199,25 @@ export async function POST(request: NextRequest, { params }: Ctx) {
             questionId: g.qid,
             lastWrongAnswer: g.userAns || null,
             mastered: false,
+            // 首次出错：按第 1 档间隔排程（1 天后复习）
+            nextReviewAt: scheduleNextReview(0, now),
           },
           update: {
             wrongCount: { increment: 1 },
             mastered: false,
             masteredAt: null,
-            lastWrongAt: new Date(),
+            lastWrongAt: now,
             lastWrongAnswer: g.userAns || null,
+            // 再次答错：重置复习周期（记忆周期重新开始）
+            reviewCount: 0,
+            nextReviewAt: scheduleNextReview(0, now),
           },
         });
       } else {
-        // 答对则把错题本中的 mastered 标记为 true
+        // 答对：错题本中未掌握的标记为已掌握，并清除复习排程
         await tx.wrongRecord.updateMany({
           where: { studentId: user!.id, questionId: g.qid, mastered: false },
-          data: { mastered: true, masteredAt: new Date() },
+          data: { mastered: true, masteredAt: now, nextReviewAt: null },
         });
       }
     }

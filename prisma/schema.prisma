@@ -117,6 +117,10 @@ model User {
   parentBindingsAsParent  ParentBinding[] @relation("ParentToBinding")
   parentBindingsAsStudent ParentBinding[] @relation("StudentToBinding")
   learningProfile      LearningProfile?
+  checkIns             LearningCheckIn[]
+  studyGoals           StudyGoal[]
+  userBadges           UserBadge[]
+  discussions          CourseDiscussion[]
   volunteerCerts       VolunteerCert[]
   // 内容域关系
   coursesAsTeacher     Course[]
@@ -177,10 +181,116 @@ model LearningProfile {
   totalQuestions    Int      @default(0)
   correctRate       Float    @default(0)
   streakDays        Int      @default(0)
+  // P1-2：学习积分（打卡+答题+复习累积），用于激励
+  totalPoints       Int      @default(0)
   lastActiveAt      DateTime?
   updatedAt         DateTime @updatedAt
 
   @@index([lastActiveAt])
+}
+
+/// 学习打卡记录（P1-2）：每日打卡，连续学习激励
+/// 参考方向：国内平台（猿辅导/作业帮）打卡日历 + 连续学习奖励
+model LearningCheckIn {
+  id          String   @id @default(cuid())
+  studentId   String
+  student     User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  // 打卡日期（按天，同一学生同一天仅一次）
+  checkInDate DateTime @db.Date
+  // 当日学习时长（分钟，可后续更新）
+  studyMinutes Int     @default(0)
+  // 本次打卡获得积分
+  pointsEarned Int     @default(10)
+  // 连续学习天数快照（打卡时计算）
+  streakDays  Int      @default(1)
+  createdAt   DateTime @default(now())
+
+  @@unique([studentId, checkInDate])
+  @@index([studentId, checkInDate])
+}
+
+/// 学习目标（P2-1）：学生设定周度/月度学习目标，追踪完成进度
+/// 参考方向：自适应学习路径规划（精准目标 + 进度可视化）
+model StudyGoal {
+  id          String   @id @default(cuid())
+  studentId   String
+  student     User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  // 目标类型：STUDY_MINUTES（学习时长）/ QUESTION_COUNT（答题量）/ ACCURACY（正确率）/ EXAM_PASS（考试及格）
+  goalType    String
+  // 目标值（分钟/题数/百分比）
+  targetValue Float
+  // 当前进度值
+  currentValue Float  @default(0)
+  // 周期：WEEKLY / MONTHLY
+  period      String   @default("WEEKLY")
+  // 周期起始日期
+  periodStart DateTime @db.Date
+  // 周期结束日期
+  periodEnd   DateTime @db.Date
+  // 是否已完成
+  achieved    Boolean  @default(false)
+  achievedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([studentId, periodEnd])
+}
+
+/// 成就徽章定义（P2-2）：系统预设徽章，学生达成条件后自动颁发
+/// 参考方向：游戏化激励体系（Khan Academy 徽章 + Duolingo 成就）
+model Badge {
+  id          String   @id @default(cuid())
+  // 徽章唯一标识码（如 STREAK_7, QUESTIONS_100, FIRST_EXAM_PASS）
+  code        String   @unique
+  name        String
+  description String
+  // 徽章等级：BRONZE / SILVER / GOLD
+  tier        String   @default("BRONZE")
+  // 图标 emoji 或 URL
+  icon        String   @default("🏆")
+  // 达成条件 JSON：{ type, threshold }
+  criteria    Json
+  createdAt    DateTime @default(now())
+
+  userBadges  UserBadge[]
+}
+
+/// 用户已获得徽章（P2-2）
+model UserBadge {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badgeId     String
+  badge       Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  earnedAt    DateTime @default(now())
+
+  @@unique([userId, badgeId])
+  @@index([userId])
+}
+
+/// 课程讨论区（P3-2）：学生在课程下提问，同伴/老师可回复
+/// 参考方向：内容生态与同伴学习（Coursera/可汗讨论区）
+model CourseDiscussion {
+  id          String   @id @default(cuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  // 帖子内容（Markdown 简化纯文本）
+  content     String
+  // 父帖 ID（null = 主帖，有值 = 回复）
+  parentId    String?
+  parent      CourseDiscussion? @relation("DiscussionReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     CourseDiscussion[] @relation("DiscussionReplies")
+  // 点赞数（简化为计数，不做单独用户关联表）
+  likeCount   Int      @default(0)
+  // 是否被教师/管理员置顶
+  pinned      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([courseId, parentId])
+  @@index([authorId])
 }
 
 // 课程 AI 聊天会话：每门课程每个学生一条会话记录（含历史消息）
@@ -286,6 +396,8 @@ model Course {
   materials   Material[]
   // 课程 AI 聊天会话（第二期）
   chatSessions CourseChatSession[]
+  // P3-2：课程讨论区
+  discussions CourseDiscussion[]
   // 第三期：竞赛关联
   contestsAsCourse  Contest[]  @relation("ContestLinkedCourse")
 
@@ -613,6 +725,7 @@ model QuestionAnswer {
 }
 
 /// 错题本：答错后自动加入，可手动移除
+/// P0-1 升级为艾宾浩斯复习引擎：增加到期调度 / 复习次数 / 错误原因
 model WrongRecord {
   id          String   @id @default(cuid())
   studentId   String
@@ -629,8 +742,21 @@ model WrongRecord {
   lastWrongAt  DateTime @default(now())
   masteredAt   DateTime?
 
+  // ===== 艾宾浩斯复习引擎字段（P0-1）=====
+  // 下次复习到期时间（按艾宾浩斯遗忘曲线计算）；为空表示未排程（首次出错即排程）
+  nextReviewAt DateTime?
+  // 已完成的复习次数（每完成一次复习自增）
+  reviewCount  Int      @default(0)
+  // 上次复习时间
+  lastReviewedAt DateTime?
+  // 错误原因标签：CALCULATION 计算错误 | CONCEPT 概念混淆 | MISREAD 审题失误 | FORGOTTEN 知识遗忘 | OTHER
+  errorTag    String?
+  // 错误原因详细描述（学生/系统填写）
+  errorReason String?
+
   @@unique([studentId, questionId])
   @@index([studentId, mastered])
+  @@index([studentId, nextReviewAt])
 }
 
 /// 题目收藏

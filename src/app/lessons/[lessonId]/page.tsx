@@ -16,10 +16,18 @@ import {
   Divider,
   Breadcrumb,
 } from 'antd';
-import { RobotOutlined } from '@ant-design/icons';
+import { RobotOutlined, SendOutlined, BulbOutlined } from '@ant-design/icons';
 import Link from 'next/link';
+import { SOCRATIC_MODES, type SocraticMode } from '@/lib/socratic';
 
 const { TextArea } = Input;
+
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  citations?: unknown[];
+  ts?: string;
+}
 
 interface LessonDetail {
   lesson: {
@@ -115,6 +123,15 @@ export default function LessonDetailPage() {
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [submitted, setSubmitted] = useState<Record<string, boolean>>({});
 
+  // P0-3：苏格拉底式 AI 辅导状态
+  const [aiMode, setAiMode] = useState<SocraticMode>('guide');
+  const [aiInput, setAiInput] = useState('');
+  const [aiMessages, setAiMessages] = useState<ChatMessage[]>([]);
+  const [aiSending, setAiSending] = useState(false);
+  const [aiExamLocked, setAiExamLocked] = useState(false);
+  const aiAbortRef = useRef<AbortController | null>(null);
+  const aiScrollRef = useRef<HTMLDivElement>(null);
+
   async function loadDetail() {
     setLoading(true);
     try {
@@ -203,6 +220,154 @@ export default function LessonDetailPage() {
     // TODO: POST /api/v1/questions/{id}/answer 判分；此处仅记录答案
     message.info('练习模式：答案已记录，正确与否以老师批改/AI评分结果为准');
   }
+
+  // P0-3：加载本课程 AI 对话历史
+  async function loadChatHistory(courseId: string) {
+    try {
+      const res = await fetch(`/api/v1/courses/${courseId}/chat/history?limit=50`, {
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data?.messages)) {
+        setAiMessages(data.data.messages as ChatMessage[]);
+      }
+    } catch {
+      // 静默失败
+    }
+  }
+
+  // P0-3：发送问题，SSE 流式接收苏格拉底式回答
+  async function sendAiMessage() {
+    if (!detail || !aiInput.trim() || aiSending) return;
+    const courseId = detail.course.id;
+    const q = aiInput.trim();
+
+    setAiExamLocked(false);
+    setAiInput('');
+    setAiSending(true);
+
+    const userMsg: ChatMessage = { role: 'user', content: q, ts: new Date().toISOString() };
+    setAiMessages((prev) => [...prev, userMsg]);
+    // 占位 assistant 消息，流式填充
+    const assistantIdx = aiMessages.length + 1;
+    setAiMessages((prev) => [...prev, { role: 'assistant', content: '', citations: [] }]);
+
+    const controller = new AbortController();
+    aiAbortRef.current = controller;
+
+    try {
+      const res = await fetch(`/api/v1/courses/${courseId}/chat`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+        },
+        body: JSON.stringify({ q, mode: aiMode, stream: true }),
+        signal: controller.signal,
+      });
+
+      if (res.status === 403) {
+        const data = await res.json().catch(() => ({}));
+        if (data?.error?.message) message.warning(data.error.message);
+        setAiExamLocked(true);
+        setAiMessages((prev) => prev.filter((_, i) => i !== assistantIdx));
+        return;
+      }
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        message.error(data?.error?.message ?? 'AI 问答失败，请稍后重试');
+        setAiMessages((prev) => prev.filter((_, i) => i !== assistantIdx));
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let acc = '';
+      let citations: unknown[] = [];
+
+      const flush = () => {
+        const blocks = buffer.split('\n\n');
+        buffer = blocks.pop() ?? '';
+        for (const block of blocks) {
+          const lines = block.split('\n');
+          let evt = 'message';
+          let dataStr = '';
+          for (const line of lines) {
+            if (line.startsWith('event:')) evt = line.slice(6).trim();
+            else if (line.startsWith('data:')) dataStr += line.slice(5).trim();
+          }
+          if (!dataStr) continue;
+          if (evt === 'text') {
+            acc += dataStr;
+            setAiMessages((prev) => {
+              const next = [...prev];
+              if (next[assistantIdx]) next[assistantIdx] = { ...next[assistantIdx], content: acc };
+              return next;
+            });
+          } else if (evt === 'citation') {
+            try {
+              const c = JSON.parse(dataStr);
+              citations = Array.isArray(c) ? c : [c];
+              setAiMessages((prev) => {
+                const next = [...prev];
+                if (next[assistantIdx]) next[assistantIdx] = { ...next[assistantIdx], citations };
+                return next;
+              });
+            } catch {}
+          } else if (evt === 'done') {
+            // 完成
+          } else if (dataStr.startsWith('{')) {
+            try {
+              const obj = JSON.parse(dataStr);
+              if (obj.error) message.error(obj.message ?? obj.error);
+            } catch {}
+          }
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        flush();
+      }
+      if (buffer) flush();
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') {
+        // 用户主动取消
+      } else {
+        message.error('网络错误，AI 问答中断');
+      }
+      setAiMessages((prev) => {
+        const next = [...prev];
+        if (next[assistantIdx] && !next[assistantIdx].content) {
+          return prev.filter((_, i) => i !== assistantIdx);
+        }
+        return next;
+      });
+    } finally {
+      setAiSending(false);
+      aiAbortRef.current = null;
+      setTimeout(() => {
+        aiScrollRef.current?.scrollTo({ top: aiScrollRef.current.scrollHeight, behavior: 'smooth' });
+      }, 50);
+    }
+  }
+
+  // P0-3：切换到 AI tab 时加载历史
+  useEffect(() => {
+    if (tabKey === 'ai' && detail && aiMessages.length === 0) {
+      loadChatHistory(detail.course.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabKey, detail]);
+
+  // P0-3：消息更新时自动滚动到底部
+  useEffect(() => {
+    aiScrollRef.current?.scrollTo({ top: aiScrollRef.current.scrollHeight });
+  }, [aiMessages]);
 
   if (loading) {
     return (
@@ -419,21 +584,134 @@ export default function LessonDetailPage() {
                 },
                 {
                   key: 'ai',
-                  label: 'AI 问答',
+                  label: (
+                    <span className="flex items-center gap-1">
+                      <RobotOutlined /> AI 辅导
+                    </span>
+                  ),
                   children: (
-                    <div className="p-8 text-center">
-                      <div className="text-5xl mb-4 text-emerald-500">
-                        <RobotOutlined />
+                    <div className="p-4 flex flex-col" style={{ height: 600 }}>
+                      {/* 苏格拉底式辅导模式选择器 */}
+                      <div className="mb-3">
+                        <div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
+                          <BulbOutlined />
+                          <span>苏格拉底式辅导 · 不直接给答案，引导你自主思考</span>
+                        </div>
+                        <Radio.Group
+                          value={aiMode}
+                          onChange={(e) => setAiMode(e.target.value)}
+                          size="small"
+                          buttonStyle="solid"
+                        >
+                          <Radio.Button value="hint">{SOCRATIC_MODES.hint.label}</Radio.Button>
+                          <Radio.Button value="guide">{SOCRATIC_MODES.guide.label}</Radio.Button>
+                          <Radio.Button value="explain">{SOCRATIC_MODES.explain.label}</Radio.Button>
+                        </Radio.Group>
+                        <div className="text-xs text-gray-400 mt-1">
+                          {SOCRATIC_MODES[aiMode].desc}
+                        </div>
                       </div>
-                      <h3 className="text-lg font-semibold mb-2">AI 问答助手</h3>
-                      <p className="text-gray-500 mb-6 text-sm">
-                        已接入 LightRAG，可以针对本课程内容进行个性化问答
-                      </p>
-                      <Link href={`/courses/${course.id}`}>
-                        <Button type="primary" size="large">
-                          进入课程问答
+
+                      {/* 对话历史区域 */}
+                      <div
+                        ref={aiScrollRef}
+                        className="flex-1 overflow-y-auto border rounded-lg p-3 mb-3 bg-gray-50"
+                      >
+                        {aiMessages.length === 0 ? (
+                          <div className="text-center text-gray-400 py-12">
+                            <RobotOutlined style={{ fontSize: 40 }} />
+                            <div className="mt-3 text-sm">
+                              没有对话记录。提出你的问题，AI 会用引导式提问帮你思考。
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {aiMessages.map((m, i) => (
+                              <div
+                                key={i}
+                                className={
+                                  m.role === 'user'
+                                    ? 'flex justify-end'
+                                    : 'flex justify-start'
+                                }
+                              >
+                                <div
+                                  className={
+                                    m.role === 'user'
+                                      ? 'bg-emerald-500 text-white rounded-lg px-3 py-2 max-w-[85%]'
+                                      : 'bg-white border rounded-lg px-3 py-2 max-w-[85%]'
+                                  }
+                                >
+                                  {m.role === 'assistant' && (
+                                    <div className="text-xs text-emerald-600 mb-1 flex items-center gap-1">
+                                      <RobotOutlined /> AI 辅导
+                                    </div>
+                                  )}
+                                  <div className="text-sm whitespace-pre-wrap">
+                                    {m.content || (aiSending && i === aiMessages.length - 1 ? '思考中…' : '')}
+                                  </div>
+                                  {m.role === 'assistant' &&
+                                    Array.isArray(m.citations) &&
+                                    m.citations.length > 0 && (
+                                      <div className="mt-2 pt-2 border-t border-dashed">
+                                        <div className="text-xs text-gray-400 mb-1">
+                                          参考来源：
+                                        </div>
+                                        <div className="flex flex-wrap gap-1">
+                                          {(m.citations as Array<{ id?: string; title?: string; source?: string }>).map(
+                                            (c, ci) => (
+                                              <Tag key={ci} className="text-xs">
+                                                {c.title ?? c.source ?? `来源 ${ci + 1}`}
+                                              </Tag>
+                                            ),
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 考试期锁定提示 */}
+                      {aiExamLocked && (
+                        <div className="mb-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
+                          考试期间 AI 辅导暂不可用，请专注答题。
+                        </div>
+                      )}
+
+                      {/* 输入区 */}
+                      <div className="flex gap-2 items-end">
+                        <TextArea
+                          value={aiInput}
+                          onChange={(e) => setAiInput(e.target.value)}
+                          placeholder="输入你的问题，AI 会用引导式提问帮你思考…"
+                          autoSize={{ minRows: 1, maxRows: 4 }}
+                          maxLength={1000}
+                          onPressEnter={(e) => {
+                            if (!e.shiftKey) {
+                              e.preventDefault();
+                              sendAiMessage();
+                            }
+                          }}
+                          disabled={aiSending}
+                          className="flex-1"
+                        />
+                        <Button
+                          type="primary"
+                          icon={<SendOutlined />}
+                          loading={aiSending}
+                          disabled={!aiInput.trim() || aiExamLocked}
+                          onClick={sendAiMessage}
+                        >
+                          发送
                         </Button>
-                      </Link>
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        按 Enter 发送，Shift+Enter 换行。AI 不直接给答案，引导你自主推导。
+                      </div>
                     </div>
                   ),
                 },

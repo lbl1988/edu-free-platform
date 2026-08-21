@@ -2,9 +2,32 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Card, Spin, Tag, Button, List, App, Modal, Input, Form, Upload, message } from 'antd';
-import { UploadOutlined } from '@ant-design/icons';
+import { Card, Spin, Tag, Button, List, App, Modal, Input, Form, Upload, message, Avatar, Empty } from 'antd';
+import { UploadOutlined, MessageOutlined, LikeOutlined, SendOutlined } from '@ant-design/icons';
 import Link from 'next/link';
+
+const { TextArea } = Input;
+
+interface DiscussionAuthor {
+  id: string;
+  nickname: string | null;
+  avatarUrl: string | null;
+  role: string;
+  grade: number | null;
+}
+
+interface DiscussionPost {
+  id: string;
+  courseId: string;
+  authorId: string;
+  content: string;
+  parentId: string | null;
+  likeCount: number;
+  pinned: boolean;
+  createdAt: string;
+  author: DiscussionAuthor;
+  replies?: DiscussionPost[];
+}
 
 interface CourseDetail {
   id: string;
@@ -44,6 +67,22 @@ export default function CourseDetailPage() {
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+  // P3-2：讨论区
+  const [posts, setPosts] = useState<DiscussionPost[]>([]);
+  const [discussInput, setDiscussInput] = useState('');
+  const [posting, setPosting] = useState(false);
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [replyInput, setReplyInput] = useState('');
+
+  async function loadDiscussions() {
+    try {
+      const res = await fetch(`/api/v1/courses/${id}/discussions`, { credentials: 'include' });
+      const data = await res.json();
+      if (data.success) setPosts(data.data.posts);
+    } catch {
+      // 静默
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -57,6 +96,7 @@ export default function CourseDetailPage() {
       else message.error(cd.error?.message ?? '加载失败');
       const md = await mRes.json();
       if (md.success) setMaterials(md.data);
+      loadDiscussions();
     } catch {
       message.error('网络错误');
     } finally {
@@ -86,6 +126,54 @@ export default function CourseDetailPage() {
       message.error('网络错误');
     } finally {
       setJoining(false);
+    }
+  }
+
+  // P3-2：发帖/回复
+  async function handleSendPost(parentId?: string) {
+    const content = parentId ? replyInput : discussInput;
+    if (!content.trim()) return;
+    setPosting(true);
+    try {
+      const res = await fetch(`/api/v1/courses/${id}/discussions`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: content.trim(), parentId: parentId ?? null }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        message.success(parentId ? '回复成功' : '发布成功');
+        if (parentId) {
+          setReplyInput('');
+          setReplyTo(null);
+        } else {
+          setDiscussInput('');
+        }
+        loadDiscussions();
+      } else {
+        message.error(data.error?.message ?? '发布失败');
+      }
+    } catch {
+      message.error('网络错误');
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  // P3-2：点赞
+  async function handleLike(postId: string) {
+    try {
+      const res = await fetch(`/api/v1/courses/${id}/discussions/${postId}/like`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (data.success) {
+        loadDiscussions();
+      }
+    } catch {
+      // 静默
     }
   }
 
@@ -188,6 +276,133 @@ export default function CourseDetailPage() {
               </List.Item>
             )}
           />
+        )}
+      </Card>
+
+      {/* P3-2：课程讨论区 */}
+      <Card
+        title={<span className="flex items-center gap-2"><MessageOutlined /> 课程讨论区</span>}
+        className="mb-6"
+      >
+        {/* 发帖输入 */}
+        <div className="mb-4">
+          <TextArea
+            value={discussInput}
+            onChange={(e) => setDiscussInput(e.target.value)}
+            placeholder="有问题想问老师或同学？在这里发帖讨论…"
+            autoSize={{ minRows: 2, maxRows: 6 }}
+            maxLength={2000}
+          />
+          <div className="flex justify-end mt-2">
+            <Button
+              type="primary"
+              icon={<SendOutlined />}
+              loading={posting}
+              disabled={!discussInput.trim()}
+              onClick={() => handleSendPost()}
+            >
+              发布
+            </Button>
+          </div>
+        </div>
+
+        {/* 帖子列表 */}
+        {posts.length === 0 ? (
+          <Empty description="暂无讨论，快来发第一条吧" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        ) : (
+          <div className="space-y-4">
+            {posts.map((post) => (
+              <div key={post.id} className="border rounded-lg p-3">
+                {/* 帖子头部 */}
+                <div className="flex items-start gap-3">
+                  <Avatar size={36} src={post.author.avatarUrl ?? undefined} className="bg-emerald-500 shrink-0">
+                    {post.author.nickname?.[0] ?? '?'}
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-medium text-sm">{post.author.nickname ?? '匿名'}</span>
+                      {post.author.role === 'TEACHER' && <Tag color="blue" className="text-xs">教师</Tag>}
+                      {post.author.role === 'STUDENT' && post.author.grade && (
+                        <Tag className="text-xs">{post.author.grade}年级</Tag>
+                      )}
+                      {post.pinned && <Tag color="red" className="text-xs">置顶</Tag>}
+                      <span className="text-xs text-gray-400 ml-auto">
+                        {new Date(post.createdAt).toLocaleString('zh-CN')}
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-700 whitespace-pre-wrap">{post.content}</div>
+                    {/* 操作栏 */}
+                    <div className="flex items-center gap-4 mt-2">
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<LikeOutlined />}
+                        onClick={() => handleLike(post.id)}
+                      >
+                        {post.likeCount > 0 ? post.likeCount : '点赞'}
+                      </Button>
+                      <Button
+                        type="text"
+                        size="small"
+                        onClick={() => {
+                          setReplyTo(replyTo === post.id ? null : post.id);
+                          setReplyInput('');
+                        }}
+                      >
+                        回复
+                      </Button>
+                    </div>
+
+                    {/* 回复输入 */}
+                    {replyTo === post.id && (
+                      <div className="mt-2 flex gap-2">
+                        <TextArea
+                          value={replyInput}
+                          onChange={(e) => setReplyInput(e.target.value)}
+                          placeholder={`回复 ${post.author.nickname ?? '匿名'}…`}
+                          autoSize={{ minRows: 1, maxRows: 3 }}
+                          maxLength={2000}
+                          className="flex-1"
+                        />
+                        <Button
+                          type="primary"
+                          size="small"
+                          loading={posting}
+                          disabled={!replyInput.trim()}
+                          onClick={() => handleSendPost(post.id)}
+                        >
+                          回复
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* 回复列表 */}
+                    {post.replies && post.replies.length > 0 && (
+                      <div className="mt-3 pl-4 border-l-2 border-gray-100 space-y-2">
+                        {post.replies.map((reply) => (
+                          <div key={reply.id} className="flex items-start gap-2">
+                            <Avatar size={24} src={reply.author.avatarUrl ?? undefined} className="bg-blue-500 shrink-0">
+                              {reply.author.nickname?.[0] ?? '?'}
+                            </Avatar>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-medium">{reply.author.nickname ?? '匿名'}</span>
+                                {reply.author.role === 'TEACHER' && <Tag color="blue" className="text-xs">教师</Tag>}
+                                <span className="text-xs text-gray-400">
+                                  {new Date(reply.createdAt).toLocaleString('zh-CN')}
+                                </span>
+                              </div>
+                              <div className="text-sm text-gray-600 mt-0.5 whitespace-pre-wrap">{reply.content}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </Card>
 
