@@ -2,6 +2,13 @@
 
 > 完全免费、公益运营的 K-12 在线学习平台，覆盖课堂学科、题库刷题、在线考试、课外知识、竞赛与 OJ、AI 课程问答、推荐看板、艾宾浩斯复习引擎、苏格拉底 AI 辅导、知识图谱诊断、游戏化激励等模块。
 
+## 在线访问
+
+- **生产环境（Vercel 香港节点）**：[https://edu-free-platform.vercel.app](https://edu-free-platform.vercel.app)
+  - 登录地址：[https://edu-free-platform.vercel.app/login](https://edu-free-platform.vercel.app/login)
+  - 注册地址：[https://edu-free-platform.vercel.app/register](https://edu-free-platform.vercel.app/register)
+  - 本地开发默认地址：`http://localhost:3000`
+
 ## 项目简介
 
 本项目旨在为全国中小学生（G1–G12）提供一个**零门槛、零付费**的在线学习平台，学生、家长、教师、志愿者均可参与。平台坚持未成年人保护与数据合规优先，支持匿名浏览核心内容、仅个人记录需登录。
@@ -118,10 +125,14 @@ npm run dev
 
 仓库根目录 `vercel.json` 已配置：
 
+- 生产访问：[https://edu-free-platform.vercel.app](https://edu-free-platform.vercel.app)
+- 登录入口：[https://edu-free-platform.vercel.app/login](https://edu-free-platform.vercel.app/login)
 - 构建命令：`prisma generate && prisma migrate deploy && next build`
 - 部署区域：`hkg1`（香港）
 - Cron：每日 02:00 触发 `/api/v1/admin/crawl/scheduled` 全网采集
 - `github.silent: true`：构建状态不回写 PR 评论
+
+> 部署到自己的 Vercel 账号时，导入仓库后在项目设置中配置环境变量（参考 `.env.example`），生产域名可在 Vercel Dashboard → Domains 中自定义。
 
 ### 自托管（Docker）
 
